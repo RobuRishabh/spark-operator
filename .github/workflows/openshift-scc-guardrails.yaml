@@ -42,40 +42,30 @@ jobs:
       # Step 3: Run operator install test
       # ======================================================================
       - name: Run operator install test
-        working-directory: examples/openshift/tests
-        run: |
-          echo "Running operator install test..."
-          chmod +x test-operator-install.sh
-          CLEANUP=false ./test-operator-install.sh
+        run: CLEANUP=false make operator-install
 
       # ======================================================================
       # Step 4: Install ValidatingAdmissionPolicy
       # ======================================================================
       - name: Install ValidatingAdmissionPolicy
-        working-directory: examples/openshift
         run: |
           echo "Installing ValidatingAdmissionPolicy..."
-          
-          # Check API availability
+
           if ! kubectl api-resources | grep -q "validatingadmissionpolicies"; then
             echo "::error::ValidatingAdmissionPolicy API not found."
             exit 1
           fi
 
-          # Ensure your YAML files use apiVersion: admissionregistration.k8s.io/v1
-          kubectl apply -f k8s/base/validating-admission-policy.yaml
-          kubectl apply -f k8s/base/validating-admission-policy-binding.yaml
-          
+          kubectl apply -f examples/openshift/k8s/base/validating-admission-policy.yaml
+          kubectl apply -f examples/openshift/k8s/base/validating-admission-policy-binding.yaml
+
           echo "✅ Policy installed successfully"
 
       # ======================================================================
       # Step 5: Run SCC guardrails test
       # ======================================================================
       - name: Run SCC guardrails test
-        working-directory: examples/openshift/tests
-        run: |
-          chmod +x test-invalid-fsgroup.sh
-          ./test-invalid-fsgroup.sh
+        run: make test-invalid-fsgroup
 
       # ======================================================================
       # Debug: Show cluster state on failure

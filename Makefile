@@ -283,6 +283,85 @@ deploy: helm manifests update-crd kind-load-image ## Deploy controller to the K8
 undeploy: helm ## Uninstall spark-operator
 	$(HELM) uninstall spark-operator
 
+##@ OpenShift/KIND Tests
+##
+## These targets work on both KIND (local) and OpenShift clusters.
+## Use CLEANUP=false to skip cleanup (default: true).
+## Example: CLEANUP=false make test-spark-pi
+##
+
+.PHONY: kind-setup
+kind-setup: kind ## Setup a local Kind cluster for testing.
+	@echo "Setting up Kind cluster..."
+	chmod +x examples/openshift/tests/setup-kind-cluster.sh
+	PATH="$(LOCALBIN):$(PATH)" examples/openshift/tests/setup-kind-cluster.sh
+
+.PHONY: kind-setup-full
+kind-setup-full: kind ## Setup Kind cluster with docling image and test assets.
+	@echo "Setting up Kind cluster with full docling setup..."
+	chmod +x examples/openshift/tests/setup-kind-cluster.sh
+	PATH="$(LOCALBIN):$(PATH)" examples/openshift/tests/setup-kind-cluster.sh --with-docling --upload-assets
+
+.PHONY: kind-cleanup
+kind-cleanup: kind ## Delete the Kind cluster and cleanup resources.
+	@echo "Cleaning up Kind cluster..."
+	chmod +x examples/openshift/tests/cleanup-kind-cluster.sh
+	PATH="$(LOCALBIN):$(PATH)" examples/openshift/tests/cleanup-kind-cluster.sh
+
+.PHONY: operator-install
+operator-install: ## Install Spark operator on KIND or OpenShift cluster. Use CLEANUP=false to keep installed.
+	@if ! kubectl cluster-info &>/dev/null; then \
+		echo "No cluster detected, running kind-setup first..."; \
+		$(MAKE) kind-setup; \
+	fi
+	@echo "Installing Spark operator..."
+	chmod +x examples/openshift/tests/test-operator-install.sh
+	CLEANUP=$(CLEANUP) examples/openshift/tests/test-operator-install.sh
+
+.PHONY: test-spark-pi
+test-spark-pi: ## Run Spark Pi test on KIND or OpenShift. Use CLEANUP=false to keep resources.
+	@if ! kubectl get deployment -n spark-operator -l app.kubernetes.io/name=spark-operator &>/dev/null; then \
+		echo "Spark operator not found, running operator-install first..."; \
+		$(MAKE) operator-install CLEANUP=false; \
+	fi
+	@echo "Running Spark Pi test..."
+	chmod +x examples/openshift/tests/test-spark-pi.sh
+	CLEANUP=$(CLEANUP) examples/openshift/tests/test-spark-pi.sh
+
+.PHONY: test-docling-spark
+test-docling-spark: ## Run Docling Spark test on KIND or OpenShift. Use CLEANUP=false to keep resources.
+	@if ! kubectl get deployment -n spark-operator -l app.kubernetes.io/name=spark-operator &>/dev/null; then \
+		echo "Spark operator not found, running operator-install first..."; \
+		$(MAKE) operator-install CLEANUP=false; \
+	fi
+	@echo "Running Docling Spark test..."
+	chmod +x examples/openshift/tests/test-docling-spark.sh
+	CLEANUP=$(CLEANUP) examples/openshift/tests/test-docling-spark.sh
+
+.PHONY: test-invalid-fsgroup
+test-invalid-fsgroup: ## Run ValidatingAdmissionPolicy fsGroup rejection test. Use CLEANUP=false to keep resources.
+	@if ! kubectl get deployment -n spark-operator -l app.kubernetes.io/name=spark-operator &>/dev/null; then \
+		echo "Spark operator not found, running operator-install first..."; \
+		$(MAKE) operator-install CLEANUP=false; \
+	fi
+	@echo "Running invalid fsGroup test..."
+	chmod +x examples/openshift/tests/test-invalid-fsgroup.sh
+	CLEANUP=$(CLEANUP) examples/openshift/tests/test-invalid-fsgroup.sh
+
+.PHONY: test-all
+test-all: ## Run all tests (operator-install, spark-pi, docling, invalid-fsgroup).
+	@echo "Running all OpenShift/KIND tests..."
+	$(MAKE) operator-install CLEANUP=false
+	$(MAKE) test-spark-pi CLEANUP=false
+	$(MAKE) test-docling-spark CLEANUP=false
+	$(MAKE) test-invalid-fsgroup
+
+## Legacy aliases (for backwards compatibility)
+.PHONY: openshift-test-setup openshift-test-cleanup openshift-test-shell
+openshift-test-setup: kind-setup ## [DEPRECATED] Use 'make kind-setup' instead.
+openshift-test-cleanup: kind-cleanup ## [DEPRECATED] Use 'make kind-cleanup' instead.
+openshift-test-shell: test-spark-pi ## [DEPRECATED] Use 'make test-spark-pi' instead.
+
 ##@ Dependencies
 
 $(LOCALBIN):
@@ -302,6 +381,7 @@ $(CONTROLLER_GEN): $(LOCALBIN)
 kind: $(KIND) ## Download kind locally if necessary.
 $(KIND): $(LOCALBIN)
 	$(call go-install-tool,$(KIND),sigs.k8s.io/kind,$(KIND_VERSION))
+	ln -sf $(notdir $(KIND)) $(LOCALBIN)/kind
 
 .PHONY: setup-envtest
 setup-envtest: envtest ## Download the binaries required for ENVTEST in the local bin directory.
