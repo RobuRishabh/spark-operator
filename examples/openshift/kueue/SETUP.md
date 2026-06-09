@@ -178,13 +178,196 @@ go test -v -tags openshift ./examples/openshift/kueue/ \
   -timeout 35m
 ```
 
-Tests take ~4 minutes to complete. Add `-ginkgo.v` to see step-by-step progress and SparkApplication state transitions.
+Tests take ~4 minutes to complete.
+
+### Priority, FairSharing & Preemption Tests
+
+Tests in `examples/openshift/kueue/kueue_priority_test.go` validate advanced Kueue scheduling:
+
+| Test | Description |
+|------|-------------|
+| FairSharing Policy | Team B admitted before Team A's additional submissions when A over fair share |
+| Priority-Based Scheduling | Higher-priority jobs admitted before lower-priority ones (as non-admin user) |
+| Preemption Lifecycle | Running low-priority app preempted: pods deleted, state -> Suspended |
+| Resume After Preemption | Preempted app restarts from scratch (new submission ID) and completes |
+
+#### Additional Prerequisites
+
+In addition to steps 1-6, apply the priority-specific resources:
+
+```bash
+# Apply WorkloadPriorityClasses, cohort ClusterQueues, and team LocalQueues
+oc apply -f examples/openshift/kueue/kueue-priority-resources.yaml
+
+# Apply non-admin ServiceAccount RBAC
+oc apply -f examples/openshift/kueue/spark-nonadmin-rbac.yaml
+```
+
+Verify the resources:
+
+```bash
+oc get workloadpriorityclasses
+oc get clusterqueue team-a-cq team-b-cq
+oc get localqueue team-a-lq team-b-lq -n spark-operator
+oc get serviceaccount spark-nonadmin -n spark-operator
+```
+
+The Kueue CR must have FairSharing enabled (`kueue-cr.yaml` includes this by default):
+
+```bash
+oc get kueues.kueue.openshift.io cluster -o jsonpath='{.spec.config.fairSharing}'
+```
+
+#### Run
+
+```bash
+cd /path/to/spark-operator
+
+KUBECONFIG=$HOME/.kube/config \
+go test -v -tags openshift ./examples/openshift/kueue/ \
+  -ginkgo.v \
+  -ginkgo.focus="Priority" \
+  -timeout 45m
+```
+
+Tests take ~15-17 minutes to complete (preemption lifecycle requires waiting for state transitions).
+
+#### What the Tests Validate
+
+**FairSharing (AC1):**
+- Two teams share a Cohort (`spark-cohort`) with equal quotas (2 CPU each)
+- Team A submits 2 apps (4 CPU total, borrowing from Team B's quota)
+- When Team B submits an app, Kueue reclaims borrowed quota from Team A
+- Team A's borrowing app is preempted/suspended, Team B is admitted
+
+**Priority-Based Scheduling (AC2):**
+- A blocker app fills a standalone 2 CPU queue
+- A non-admin user submits both a low-priority and high-priority app
+- After the blocker completes, Kueue admits the high-priority app first
+- Verified via Workload admission timestamps
+
+**Preemption & Resume Lifecycle (AC3/AC4):**
+
+```text
+Low-priority app:  Running -> Suspending -> Suspended (pods=0) -> Resuming -> New -> Submitted -> Running -> Completed
+High-priority app: Suspended -> Running -> Completed
+```
+
+Key assertions:
+- All driver and executor pods are deleted when the low-priority app is preempted
+- The resumed app gets a **new submission ID** (restart from scratch, not resume)
+- Pod count goes to zero during suspend, returns on resume
+
+#### Important: Cohort Configuration
+
+The FairSharing test requires ClusterQueues to be in a **Cohort**. In Kueue v1beta2, use `spec.cohortName` (not `spec.cohort`) to reference a Cohort CRD:
+
+```yaml
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: Cohort
+metadata:
+  name: spark-cohort
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: team-a-cq
+spec:
+  cohortName: spark-cohort   # NOT spec.cohort
+```
+
+Without proper cohort configuration, ClusterQueues cannot borrow from each other and FairSharing has no effect.
+
+### Multi-Tenancy, Gang Scheduling & Queue Independence Tests
+
+Tests in `examples/openshift/kueue/kueue_multitenancy_test.go` validate tenant isolation and atomic admission:
+
+| Test | Description |
+|------|-------------|
+| Multi-Tenancy Isolation | Tenant A exhausting its quota does not affect Tenant B's admission |
+| Queue Independence | Apps in independent ClusterQueues run simultaneously without interference |
+| Gang Scheduling | No partial admission — all pods (driver + executors) admitted atomically or not at all |
+
+#### Additional Prerequisites
+
+In addition to steps 1-6, apply the multi-tenancy resources and configure the Spark Operator:
+
+```bash
+# Create tenant namespaces, independent ClusterQueues, LocalQueues, and driver RBAC
+oc apply -f examples/openshift/kueue/kueue-multitenancy-resources.yaml
+```
+
+The Spark Operator must be configured to watch the tenant namespaces. If installed via Kustomize, update the operator's configuration to include `tenant-a` and `tenant-b` in the watched namespaces list, or set it to watch all namespaces.
+
+Verify the resources:
+
+```bash
+oc get namespaces tenant-a tenant-b
+oc get clusterqueue tenant-a-cq tenant-b-cq gang-cq
+oc get localqueue tenant-a-lq -n tenant-a
+oc get localqueue tenant-b-lq -n tenant-b
+oc get localqueue gang-lq -n spark-operator
+oc get serviceaccount spark-operator-spark -n tenant-a
+oc get serviceaccount spark-operator-spark -n tenant-b
+```
+
+#### Run
+
+```bash
+cd /path/to/spark-operator
+
+KUBECONFIG=$HOME/.kube/config \
+go test -v -tags openshift ./examples/openshift/kueue/ \
+  -ginkgo.v \
+  -ginkgo.focus="Multi-Tenancy" \
+  -timeout 45m
+```
+
+Tests take ~8-10 minutes to complete.
+
+#### What the Tests Validate
+
+**Multi-Tenancy Isolation (AC1):**
+- Two tenants (`tenant-a`, `tenant-b`) with separate namespaces and independent ClusterQueues (no Cohort)
+- Tenant A submits 2 apps, exhausting its 3 CPU quota
+- Tenant B submits an app and it is admitted and completes normally
+- Tenant A's quota exhaustion has zero effect on Tenant B
+
+**Queue Independence (AC2):**
+- Apps submitted to both tenant queues simultaneously
+- Both apps are admitted, run, and complete independently
+- Neither ClusterQueue shows interference from the other
+
+**Gang Scheduling (AC3):**
+- A filler app consumes all 2 CPU in the `gang-cq` ClusterQueue
+- A second app is submitted and must stay fully PENDING with zero pods
+- No driver pod is created without executors (no partial admission)
+- After the filler is deleted, the pending app is admitted atomically (driver + executor together)
+
+### Run All Kueue Tests
+
+```bash
+KUBECONFIG=$HOME/.kube/config \
+go test -v -tags openshift ./examples/openshift/kueue/ \
+  -ginkgo.v \
+  -ginkgo.focus="Kueue|Priority|Multi-Tenancy" \
+  -timeout 60m
+```
+
+### Verbose Output
+
+Add `-ginkgo.v` to see step-by-step progress and SparkApplication state transitions during each test.
 
 ## Cleanup
 
 ```bash
-# Delete all SparkApplications
+# Delete all SparkApplications across all namespaces
 oc delete sparkapplication -n spark-operator --all
+oc delete sparkapplication -n tenant-a --all --ignore-not-found
+oc delete sparkapplication -n tenant-b --all --ignore-not-found
+
+# Delete multi-tenancy resources (if applied)
+oc delete -f examples/openshift/kueue/kueue-multitenancy-resources.yaml --ignore-not-found
 
 # Delete Kueue resources
 oc delete -f examples/openshift/kueue/kueue-resources.yaml
@@ -220,6 +403,24 @@ The Spark Operator is not deployed. Redeploy it:
 ```bash
 oc apply -k config/default/ --server-side=true --force-conflicts
 ```
+
+### FairSharing test fails -- ClusterQueues not borrowing from each other
+
+Check that your ClusterQueues use `spec.cohortName` (not `spec.cohort`):
+
+```bash
+oc get clusterqueue team-a-cq -o jsonpath='{.spec.cohortName}'
+```
+
+If empty, update the ClusterQueue YAML to use `cohortName` and re-apply. Also verify the Cohort CRD exists:
+
+```bash
+oc get cohorts.kueue.x-k8s.io
+```
+
+### Multi-tenancy tests fail — SparkApplications not created in tenant namespaces
+
+The Spark Operator must be configured to watch `tenant-a` and `tenant-b` namespaces. If using Kustomize deployment, check the operator's `--namespaces` flag or set it to watch all namespaces. Also verify the Kueue RBAC (Step 4) applies cluster-wide, not just to `spark-operator` namespace.
 
 ### `install plan is not available` during bundle install
 
