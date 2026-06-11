@@ -23,7 +23,7 @@ For example, a SparkApplication named `spark-pi` creates a service named
 
 ### Verifying the service exists
 
-    kubectl get svc -n <namespace> -l spark-role=driver
+    kubectl get svc -n <namespace> | grep ui-svc
 
 Or check the SparkApplication status:
 
@@ -38,6 +38,10 @@ Or using `oc` on OpenShift:
     oc port-forward -n <namespace> svc/<app-name>-ui-svc 4040:4040
 
 Then open: http://localhost:4040
+
+> **Security note:** `port-forward` binds to `localhost` by default. Avoid using
+> `--address 0.0.0.0` on shared networks, as the Spark UI can expose job and
+> environment metadata.
 
 ### Alternate: Port-forward directly to the driver pod
 
@@ -64,6 +68,6 @@ Then open: http://localhost:4040
 - **Service not found?** Ensure the SparkApplication is in `Running` state.
   The UI service is created when the driver starts and removed on completion.
 - **Port conflict?** Use a different local port:
-  `kubectl port-forward svc/<name>-ui-svc 8080:4040` then browse to
+  `kubectl port-forward -n <namespace> svc/<name>-ui-svc 8080:4040` then browse to
   http://localhost:8080
 - **Connection refused?** The driver pod may not be fully ready yet. Wait and retry.
