@@ -219,27 +219,31 @@ func uninstallViaHelm() {
 func installViaKustomize() {
 	repoRoot := filepath.Join("..", "..")
 	kustomizeDir := filepath.Join(repoRoot, "config", "default")
-	kustomizationPath := filepath.Join(kustomizeDir, "kustomization.yaml")
+	paramsPath := filepath.Join(kustomizeDir, "params.env")
 
 	imageTag := os.Getenv("IMAGE_TAG")
 	if imageTag != "" {
 		By(fmt.Sprintf("Installing the Spark operator via Kustomize (image tag override: %s)", imageTag))
 
-		origKustomization, err := os.ReadFile(kustomizationPath)
+		origParams, err := os.ReadFile(paramsPath)
 		Expect(err).NotTo(HaveOccurred())
 		defer func() {
-			_ = os.WriteFile(kustomizationPath, origKustomization, 0644)
+			_ = os.WriteFile(paramsPath, origParams, 0644)
 		}()
 
-		lines := strings.Split(string(origKustomization), "\n")
+		image := fmt.Sprintf("ghcr.io/kubeflow/spark-operator/controller:%s", imageTag)
+		lines := strings.Split(string(origParams), "\n")
 		for i, line := range lines {
-			if strings.Contains(line, "newTag:") {
-				lines[i] = "    newTag: " + imageTag
+			if strings.HasPrefix(line, "SPARK_OPERATOR_CONTROLLER_IMAGE=") {
+				lines[i] = "SPARK_OPERATOR_CONTROLLER_IMAGE=" + image
+			}
+			if strings.HasPrefix(line, "SPARK_OPERATOR_WEBHOOK_IMAGE=") {
+				lines[i] = "SPARK_OPERATOR_WEBHOOK_IMAGE=" + image
 			}
 		}
-		Expect(os.WriteFile(kustomizationPath, []byte(strings.Join(lines, "\n")), 0644)).NotTo(HaveOccurred())
+		Expect(os.WriteFile(paramsPath, []byte(strings.Join(lines, "\n")), 0644)).NotTo(HaveOccurred())
 	} else {
-		By("Installing the Spark operator via Kustomize (using image from kustomization.yaml)")
+		By("Installing the Spark operator via Kustomize (using image from params.env)")
 	}
 
 	applyCmd := exec.Command("kubectl", "apply", "-k", kustomizeDir, "--server-side", "--force-conflicts")

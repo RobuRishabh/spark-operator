@@ -5,7 +5,7 @@ name: Kustomize Lint
 on:
   pull_request:
     branches:
-      - master
+      - main
       - release-*
     paths:
       - 'config/**'
@@ -14,7 +14,7 @@ on:
 
   push:
     branches:
-      - master
+      - main
       - release-*
     paths:
       - 'config/**'

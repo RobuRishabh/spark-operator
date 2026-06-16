@@ -180,10 +180,13 @@ e2e-test: envtest ## Run the e2e tests against a Kind k8s instance that is spun 
 
 .PHONY: kustomize-set-image
 kustomize-set-image: ## Update config/default/kustomization.yaml image tag from VERSION file.
-	@TAG=$$(cat VERSION) && \
-	sed -i.bak "s|    newTag: .*|    newTag: $$TAG|" config/default/kustomization.yaml && \
-	rm -f config/default/kustomization.yaml.bak && \
-	echo "Updated kustomize image tag to $$TAG"
+  @TAG=$$(cat VERSION) && \
+  IMAGE="quay.io/opendatahub/spark-operator:v$$TAG" && \
+  sed -i.bak "s|SPARK_OPERATOR_CONTROLLER_IMAGE=.*|SPARK_OPERATOR_CONTROLLER_IMAGE=$$IMAGE|" config/default/params.env && \
+  sed -i.bak "s|SPARK_OPERATOR_WEBHOOK_IMAGE=.*|SPARK_OPERATOR_WEBHOOK_IMAGE=$$IMAGE|" config/default/params.env && \
+  rm -f config/default/params.env.bak && \
+  echo "Updated params.env image to $$IMAGE"
+
 
 .PHONY: kustomize-lint
 kustomize-lint: ## Validate Kustomize build output (no cluster needed).

@@ -91,7 +91,7 @@ spec:
             - --scheduled-spark-application-timestamp-precision=nanos
           env:
             - name: OPERATOR_VERSION
-              value: "2.5.0-rc.0"
+              value: "2.5.0"
             - name: CONTROLLER_NAMESPACE
               valueFrom:
                 fieldRef:
