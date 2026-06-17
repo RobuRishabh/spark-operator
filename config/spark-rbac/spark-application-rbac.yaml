@@ -15,7 +15,6 @@
 #
 apiVersion: v1
 kind: ServiceAccount
-automountServiceAccountToken: true
 metadata:
   name: spark-operator-spark
 ---
@@ -52,5 +51,5 @@ subjects:
   name: spark-operator-spark
 roleRef:
   kind: Role
-  name: spark-operator-role
+  name: spark-role
   apiGroup: rbac.authorization.k8s.io
