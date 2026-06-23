@@ -286,8 +286,8 @@ Without proper cohort configuration, ClusterQueues cannot borrow from each other
 KUBECONFIG=$HOME/.kube/config \
 go test -v -tags openshift ./examples/openshift/kueue/ \
   -ginkgo.v \
-  -ginkgo.focus="Kueue|Priority" \
-  -timeout 45m
+  -ginkgo.focus="Kueue|Priority|Multi-Tenancy" \
+  -timeout 60m
 ```
 
 ### Verbose Output
@@ -297,8 +297,13 @@ Add `-ginkgo.v` to see step-by-step progress and SparkApplication state transiti
 ## Cleanup
 
 ```bash
-# Delete all SparkApplications
+# Delete all SparkApplications across all namespaces
 oc delete sparkapplication -n spark-operator --all
+oc delete sparkapplication -n tenant-a --all --ignore-not-found
+oc delete sparkapplication -n tenant-b --all --ignore-not-found
+
+# Delete multi-tenancy resources (if applied)
+oc delete -f examples/openshift/kueue/kueue-multitenancy-resources.yaml --ignore-not-found
 
 # Delete priority/fairsharing resources (if applied)
 oc delete -f examples/openshift/kueue/kueue-priority-resources.yaml --ignore-not-found
@@ -352,6 +357,10 @@ If empty, update the ClusterQueue YAML to use `cohortName` and re-apply. Also ve
 ```bash
 oc get cohorts.kueue.x-k8s.io
 ```
+
+### Multi-tenancy tests fail — SparkApplications not created in tenant namespaces
+
+The Spark Operator must be configured to watch `tenant-a` and `tenant-b` namespaces. If using Kustomize deployment, check the operator's `--namespaces` flag or set it to watch all namespaces. Also verify the Kueue RBAC (Step 4) applies cluster-wide, not just to `spark-operator` namespace.
 
 ### `install plan is not available` during bundle install
 
