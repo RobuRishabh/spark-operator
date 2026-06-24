@@ -192,6 +192,11 @@ var _ = BeforeSuite(func() {
 	// TODO: Remove this when there is a better way to ensure the webhooks are ready before running the e2e tests.
 	time.Sleep(10 * time.Second)
 
+	if installMethod == InstallMethodKustomize || installMethod == InstallMethodPreinstalled {
+		By("Patching webhook namespaceSelectors to include test namespace")
+		patchWebhookNamespaceSelectors(mutatingWebhookKey, validatingWebhookKey)
+	}
+
 	By("Ensuring clean state for test namespace")
 	testNamespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: TestNamespace}}
 	existingTestNs := &corev1.Namespace{}
@@ -502,6 +507,38 @@ func waitForValidatingWebhookReady(ctx context.Context, key types.NamespacedName
 		return true, nil
 	})
 	return err
+}
+
+func patchWebhookNamespaceSelectors(mutatingKey, validatingKey types.NamespacedName) {
+	mw := &admissionregistrationv1.MutatingWebhookConfiguration{}
+	Expect(k8sClient.Get(context.TODO(), mutatingKey, mw)).NotTo(HaveOccurred())
+	for i := range mw.Webhooks {
+		appendToNamespaceSelector(mw.Webhooks[i].NamespaceSelector, TestNamespace)
+	}
+	Expect(k8sClient.Update(context.TODO(), mw)).NotTo(HaveOccurred())
+
+	vw := &admissionregistrationv1.ValidatingWebhookConfiguration{}
+	Expect(k8sClient.Get(context.TODO(), validatingKey, vw)).NotTo(HaveOccurred())
+	for i := range vw.Webhooks {
+		appendToNamespaceSelector(vw.Webhooks[i].NamespaceSelector, TestNamespace)
+	}
+	Expect(k8sClient.Update(context.TODO(), vw)).NotTo(HaveOccurred())
+}
+
+func appendToNamespaceSelector(selector *metav1.LabelSelector, namespace string) {
+	if selector == nil {
+		return
+	}
+	for i, expr := range selector.MatchExpressions {
+		if expr.Key == "kubernetes.io/metadata.name" && expr.Operator == metav1.LabelSelectorOpIn {
+			for _, v := range expr.Values {
+				if v == namespace {
+					return
+				}
+			}
+			selector.MatchExpressions[i].Values = append(selector.MatchExpressions[i].Values, namespace)
+		}
+	}
 }
 
 func waitForSparkApplicationCompleted(ctx context.Context, key types.NamespacedName) error {
