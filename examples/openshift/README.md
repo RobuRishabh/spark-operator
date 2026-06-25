@@ -366,13 +366,10 @@ The `examples/openshift/Makefile` provides standardized targets that are the sam
 |--------|-------------|
 | `make help` | Display all available targets with descriptions |
 | `make kind-setup` | Create a local Kind cluster with namespace and PVCs |
-| `make kind-setup-full` | Same as above + pull the docling-spark image (~9.5GB) and upload test PDFs |
 | `make kind-cleanup` | Delete the Kind cluster and all resources |
-| `make operator-install` | Install the Spark operator (auto-creates a Kind cluster if none detected) |
-| `make test-spark-pi` | Run a lightweight Spark Pi test (auto-installs operator if needed) |
-| `make test-docling-spark` | Run the Docling Spark document conversion test |
-| `make e2e-kustomize-test` | Run Go e2e tests with Kustomize-based operator installation |
-| `make test-all` | Run all shell tests in sequence (operator-install, spark-pi, docling) |
+| `make e2e-kustomize-test` | Run Go e2e tests with Kustomize (excludes docling by default) |
+| `make e2e-docling-test` | Run docling-specific Go e2e test (requires preloaded image) |
+| `make test-all` | Run all Go e2e tests including docling |
 
 ### Local Kind Testing (Quick Start)
 
@@ -381,27 +378,23 @@ If you don't have an OpenShift cluster, you can run the full test suite locally 
 ```bash
 cd examples/openshift
 
-# Option 1: Run everything in one command
-make test-all
+# From the repo root: build operator, create Kind cluster, and load image
+make kind-load-image IMAGE_TAG=local
 
-# Option 2: Step by step
-make kind-setup                       # Create Kind cluster
-CLEANUP=false make operator-install   # Install operator (keep it running)
-CLEANUP=false make test-spark-pi      # Run Spark Pi test
-make test-docling-spark               # Run Docling Spark test
-make kind-cleanup                     # Tear down
+# Run Go e2e tests (excludes docling by default)
+SPARK_OPERATOR_IMAGE=ghcr.io/kubeflow/spark-operator/controller:local \
+  make -C examples/openshift e2e-kustomize-test
+
+# Tear down
+make -C examples/openshift kind-cleanup
 ```
-
-> **Auto-detection:** `make operator-install` detects whether a cluster is already running. On OpenShift it uses the existing cluster; without one it creates a Kind cluster automatically.
-
-> **Auto-dependency:** `make test-spark-pi` and `make test-docling-spark` automatically install the operator if it isn't present, so you can jump straight to a test target.
 
 ### Configuration
 
 All test targets support the `CLEANUP` environment variable. Set `CLEANUP=false` to preserve resources between test runs (useful for debugging or chaining tests):
 
 ```bash
-CLEANUP=false make test-spark-pi
+CLEANUP=false make e2e-kustomize-test
 ```
 
 | Variable | Default | Description |
@@ -409,24 +402,11 @@ CLEANUP=false make test-spark-pi
 | `CLEANUP` | `true` | Set to `false` to preserve resources after tests |
 | `KIND_CLUSTER_NAME` | `spark-operator` | Name of the Kind cluster |
 | `K8S_VERSION` | `v1.32.0` | Kubernetes version for Kind |
-| `TIMEOUT_SECONDS` | `600` | Max wait time for shell test completion |
-| `INSTALL_METHOD` | `helm` | For Go e2e tests: set to `kustomize` to use Kustomize manifests |
-| `SPARK_OPERATOR_IMAGE` | *(uses `params.env` default)* | For Go e2e tests: overrides operator image in `config/default/params.env`. Set to the locally built image for development/CI. |
+| `INSTALL_METHOD` | `helm` | Set to `kustomize` to use Kustomize manifests for operator installation |
+| `SPARK_OPERATOR_IMAGE` | *(uses `params.env` default)* | Overrides operator image in `config/default/params.env`. Set to the locally built image for development/CI. |
+| `GINKGO_LABEL_FILTER` | `!docling` | Ginkgo label filter for `e2e-kustomize-test` (set empty to run all) |
 
-### Go E2E Tests with Kustomize
-
-In addition to the shell-based tests above, the `e2e-kustomize-test` target runs the full upstream Go/Ginkgo e2e test suite using Kustomize manifests for operator installation instead of Helm. This builds the operator image from source and validates the current code.
-
-```bash
-# From the repo root: build operator, create Kind cluster, and load image
-make kind-load-image IMAGE_TAG=local
-
-# Run the Go e2e tests with the locally built image
-SPARK_OPERATOR_IMAGE=ghcr.io/kubeflow/spark-operator/controller:local \
-  make -C examples/openshift e2e-kustomize-test
-```
-
-> **Detailed testing guide:** See [tests/README.md](./tests/README.md) for full documentation on individual test scripts, Go e2e tests, environment variables, architecture diagrams, and CI integration examples.
+> **Detailed testing guide:** See [tests/README.md](./tests/README.md) for full documentation on Go e2e tests, the docling test, environment variables, architecture diagrams, and CI integration examples.
 
 ## 8. Cleanup
 

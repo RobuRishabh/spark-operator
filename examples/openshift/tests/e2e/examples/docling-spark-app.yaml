@@ -1,0 +1,80 @@
+# Docling SparkApplication for Go e2e tests
+#
+# Mirrors examples/openshift/k8s/docling-spark-app.yaml with adjustments
+# for the test namespace (spark-test) and IfNotPresent pull policy.
+#
+# Requires:
+#   - PVCs "docling-input" and "docling-output" in the target namespace
+#   - Test PDFs uploaded to the input PVC
+#   - Image preloaded into the cluster (9.5GB)
+
+apiVersion: sparkoperator.k8s.io/v1beta2
+kind: SparkApplication
+metadata:
+  name: docling-spark-job
+  namespace: spark-test
+spec:
+  type: Python
+  pythonVersion: "3"
+  mode: cluster
+  image: quay.io/rishasin/docling-spark:multi-output
+  imagePullPolicy: IfNotPresent
+  timeToLiveSeconds: 300
+  mainApplicationFile: local:///app/scripts/run_spark_job.py
+  arguments:
+    - "--input-dir"
+    - "/app/assets"
+    - "--output-dir"
+    - "/app/output"
+  sparkVersion: "3.5.7"
+  restartPolicy:
+    type: Never
+
+  volumes:
+    - name: input-data
+      persistentVolumeClaim:
+        claimName: docling-input
+    - name: output-data
+      persistentVolumeClaim:
+        claimName: docling-output
+
+  driver:
+    cores: 1
+    coreLimit: "1200m"
+    memory: "4g"
+    labels:
+      version: 3.5.7
+    serviceAccount: spark-operator-spark
+    securityContext: {}
+    env:
+      - name: HOME
+        value: /tmp
+      - name: HF_HOME
+        value: /tmp/.cache/huggingface
+      - name: XDG_CACHE_HOME
+        value: /tmp/.cache
+    volumeMounts:
+      - name: input-data
+        mountPath: /app/assets
+        readOnly: true
+      - name: output-data
+        mountPath: /app/output
+
+  executor:
+    cores: 1
+    instances: 2
+    memory: "4g"
+    labels:
+      version: 3.5.7
+    securityContext: {}
+    env:
+      - name: HOME
+        value: /tmp
+      - name: HF_HOME
+        value: /tmp/.cache/huggingface
+      - name: XDG_CACHE_HOME
+        value: /tmp/.cache
+    volumeMounts:
+      - name: input-data
+        mountPath: /app/assets
+        readOnly: true
