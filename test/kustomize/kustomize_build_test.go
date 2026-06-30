@@ -345,4 +345,3 @@ func TestKustomizeBuild(t *testing.T) {
 		assert.True(t, hasReadyz, "expected /readyz readiness probe")
 	})
 }
-
