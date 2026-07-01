@@ -195,6 +195,16 @@ func TestOverlayBuilds(t *testing.T) {
 				assert.True(t, hasSA, "RoleBinding should bind to spark-operator-spark ServiceAccount")
 			})
 
+			t.Run("PrometheusMonitoringLabel", func(t *testing.T) {
+				pm := overlayFindResource(resources, "PodMonitor", "spark-operator-podmonitor")
+				require.NotNil(t, pm)
+				assert.Equal(t, overlay.namespace, pm.GetNamespace(),
+					"PodMonitor should be in %s namespace", overlay.namespace)
+				labels := pm.GetLabels()
+				assert.Equal(t, "true", labels["opendatahub.io/monitoring"],
+					"PodMonitor should have monitoring label for observability stack")
+			})
+
 			t.Run("NetworkPolicy", func(t *testing.T) {
 				nps := overlayFindResources(resources, "NetworkPolicy")
 				assert.NotEmpty(t, nps, "overlay %s should include NetworkPolicy", overlay.name)
