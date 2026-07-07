@@ -1,5 +1,21 @@
 # Spark History Server with MinIO on OpenShift
 
+> ⚠️ **IMPORTANT - Not Recommended for Production**
+>
+> MinIO is **not recommended for production deployments** due to recent licensing changes. For production-grade storage on OpenShift, use:
+> - **[OpenShift Data Foundation (ODF)](../odf/)** - Primary recommendation (Red Hat supported, Ceph-based)
+> - **[AWS S3](../s3/)** - For ROSA clusters
+> - **Partner Storage** - NetApp, Portworx, IBM Storage Fusion
+>
+> This guide is provided for:
+> - **Development/testing environments** where licensing is not a concern
+> - **Legacy deployments** already using MinIO
+> - **Understanding S3-compatible storage patterns** (the configuration is similar to ODF)
+>
+> **For new production deployments, please see the [ODF setup guide](../odf/) instead.**
+
+---
+
 Complete guide to setting up Spark History Server with MinIO storage on OpenShift. This allows you to view Spark UI for completed jobs long after the driver pods have terminated.
 
 ## Table of Contents
@@ -45,9 +61,11 @@ If you've used Spark UI before, you know it's available on the driver pod (port 
 
 ---
 
-## Why MinIO
+## Why MinIO (Historical Context)
 
-For this setup, we use **MinIO** - an S3-compatible object storage that runs inside your OpenShift cluster.
+**Note:** This section explains why MinIO was previously recommended. For current production recommendations, see the warning above.
+
+MinIO is an S3-compatible object storage that runs inside your OpenShift cluster.
 
 **Advantages:**
 - ✅ **Self-contained** - No AWS account or external services needed

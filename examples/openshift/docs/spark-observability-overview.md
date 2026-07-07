@@ -38,9 +38,29 @@ Deploy a persistent History Server to view completed job details after driver po
 
 ### Storage Backend Options
 
-History Server requires persistent storage for event logs. **Three options documented:**
+History Server requires persistent storage for event logs. **Recommended options:**
 
-#### 1. AWS S3 (Recommended for ROSA)
+#### 1. OpenShift Data Foundation (ODF) - Recommended for OpenShift
+
+**What it is:** Red Hat's Ceph-based storage solution providing both S3-compatible object storage and ReadWriteMany (RWX) PVCs
+
+**Pros:**
+- ✅ Fully supported by Red Hat with enterprise SLAs
+- ✅ Works in disconnected/air-gapped environments
+- ✅ Provides both S3 and file storage from one system
+- ✅ No per-GB cloud storage costs
+- ✅ Portable across on-prem and cloud deployments
+
+**Cons:**
+- ❌ Requires ODF installation and cluster resources
+
+**Best for:** Production OpenShift deployments (on-premises or cloud), disconnected environments
+
+**Documentation:** [ODF Setup Guide](../spark-history-server/odf/)
+
+---
+
+#### 2. AWS S3 (Recommended for ROSA)
 
 **What it is:** AWS-managed object storage
 
@@ -59,7 +79,24 @@ History Server requires persistent storage for event logs. **Three options docum
 
 ---
 
-#### 2. MinIO (Self-Hosted Object Storage)
+#### 3. Partner Storage Solutions
+
+**What it is:** Enterprise storage from Red Hat partners (NetApp, Portworx, IBM Storage Fusion)
+
+**Pros:**
+- ✅ Field-proven in production environments
+- ✅ Enterprise support and SLAs
+- ✅ Provide both S3 and RWX PVC options
+
+**Best for:** Customers with existing partner storage investments
+
+**Documentation:** Follow partner-specific documentation for S3 or PVC setup, then use corresponding guide above
+
+---
+
+#### 4. MinIO (Self-Hosted Object Storage)
+
+> ⚠️ **Not Recommended for Production:** MinIO is not recommended for production deployments due to licensing changes. For production-grade S3-compatible storage on OpenShift, use **OpenShift Data Foundation (ODF)** instead.
 
 **What it is:** Open-source S3-compatible server running in-cluster
 
@@ -67,20 +104,20 @@ History Server requires persistent storage for event logs. **Three options docum
 - ✅ Works in disconnected/air-gapped environments
 - ✅ S3-compatible API (same code as AWS S3)
 - ✅ Enables concurrent access even on RWO storage
-- ✅ No external dependencies
 
 **Cons:**
+- ❌ Not recommended for production (licensing concerns)
 - ❌ Requires deployment and management of MinIO pods
 - ❌ Uses cluster compute resources
-- ❌ More complex than direct PVC
+- ❌ More complex than ODF or direct PVC
 
-**Best for:** Disconnected environments, self-hosted object storage
+**Best for:** Development/testing only, or legacy environments already using MinIO
 
 **Documentation:** [MinIO Setup Guide](../spark-history-server/minio/)
 
 ---
 
-#### 3. PVC (Persistent Volume Claim)
+#### 5. PVC (Persistent Volume Claim)
 
 **What it is:** Direct file system storage using Kubernetes PVCs
 
@@ -103,38 +140,51 @@ History Server requires persistent storage for event logs. **Three options docum
 ## Storage Decision Tree
 
 ```
-Is cluster connected to internet?
+Running on OpenShift?
 │
-├─ Yes (Connected)
+├─ Yes
 │  │
-│  ├─ Running on ROSA/AWS?
-│  │  └─→ Use AWS S3 (recommended)
+│  ├─ Is ODF (OpenShift Data Foundation) installed?
+│  │  │
+│  │  ├─ Yes → Use ODF (S3 or PVC mode) ✅ RECOMMENDED
+│  │  │
+│  │  └─ No
+│  │     │
+│  │     ├─ Running on ROSA?
+│  │     │  └─→ Use AWS S3
+│  │     │
+│  │     ├─ Have partner storage (NetApp/Portworx/IBM)?
+│  │     │  └─→ Use partner S3 or RWX PVC
+│  │     │
+│  │     └─ Other on-prem/cloud?
+│  │        ├─→ Has RWX storage? → Use PVC
+│  │        └─→ Consider installing ODF (recommended)
 │  │
-│  └─ Running on-premises/other cloud?
-│     ├─→ Has RWX storage? → Use PVC
-│     └─→ No RWX storage? → Use MinIO
+│  └─ Disconnected/Air-Gapped?
+│     │
+│     ├─ ODF installed? → Use ODF ✅ BEST CHOICE
+│     │
+│     └─ No ODF?
+│        ├─→ Has RWX storage? → Use PVC
+│        └─→ Development only → MinIO (not for production)
 │
-└─ No (Disconnected/Air-Gapped)
-   │
-   ├─ Has RWX storage (NFS, ODF)?
-   │  ├─→ Simple setup → Use PVC
-   │  └─→ Want S3 compatibility → Use MinIO
-   │
-   └─ Only RWO storage available?
-      └─→ Use MinIO (solves RWO limitation)
+└─ No (Other Kubernetes)
+   └─→ Refer to upstream Spark documentation
 ```
 
 ---
 
 ## Environment Support
 
-| Environment | Recommended Storage | Alternative |
-|-------------|-------------------|-------------|
-| **ROSA (Connected)** | AWS S3 | MinIO |
-| **ROSA (Disconnected)** | MinIO | AWS S3 (if VPC endpoints) |
-| **On-Prem with NFS/ODF** | PVC | MinIO |
-| **On-Prem RWO only** | MinIO | - |
-| **Other Cloud** | Cloud object storage | MinIO |
+| Environment | Primary Recommendation | Alternative Options |
+|-------------|----------------------|---------------------|
+| **OpenShift with ODF** | ODF (S3 or PVC mode) | - |
+| **ROSA (Connected)** | AWS S3 | ODF if installed |
+| **ROSA (Disconnected)** | ODF | AWS S3 (with VPC endpoints) |
+| **On-Prem with Partner Storage** | Partner S3/PVC | ODF |
+| **On-Prem with RWX** | ODF (if available), else PVC | - |
+| **Disconnected/Air-Gapped** | ODF | PVC with RWX storage |
+| **Development/Testing** | Any storage backend | MinIO (not for production) |
 
 ---
 
@@ -145,9 +195,11 @@ Is cluster connected to internet?
 - ✅ **[Port-Forward Access](../spark-ui/port-forward/)** - Development/testing
 
 ### Post-Mortem (History Server)
+- 📝 **[ODF Setup](../spark-history-server/odf/)** - Primary recommendation (in progress)
 - ✅ **[S3 Setup](../spark-history-server/s3/)** - For ROSA/connected clusters
-- ✅ **[MinIO Setup](../spark-history-server/minio/)** - For disconnected clusters
+- ✅ **[Partner Storage](../spark-history-server/)** - Use ODF/S3/PVC guides with partner-specific setup
 - ✅ **[PVC Setup](../spark-history-server/pvc/)** - For clusters with RWX storage
+- ⚠️ **[MinIO Setup](../spark-history-server/minio/)** - Development only (not production)
 
 ### Pending
 - 📝 Blog post showing end-to-end workflow
@@ -157,19 +209,19 @@ Is cluster connected to internet?
 
 ## Open Questions
 
-### 1. Storage Backend Strategy
+### 1. Storage Backend Strategy ✅ RESOLVED
 
-**Question:** Which storage backend(s) should we officially "support" vs "community-document"?
+**Decision:** OpenShift Data Foundation (ODF) is the primary recommended storage solution.
 
-**Context:**
-- All three options are technically viable
-- S3 is simplest for ROSA customers
-- MinIO + PVC are critical for disconnected/air-gapped scenarios
+**Rationale (from product feedback):**
+- ODF provides enterprise-supported storage with no per-GB costs
+- MinIO is not recommended for production due to licensing changes
+- Partner solutions (NetApp, Portworx, IBM Fusion) are field-proven alternatives
+- AWS S3 remains primary recommendation for ROSA clusters
 
-**Decision needed:**
-- [ ] Which storage backends are "Red Hat supported"?
-- [ ] Should we prioritize one backend in marketing materials?
-- [ ] Do disconnected environments require equal priority to connected?
+**Priority:**
+1. **Production:** ODF (OpenShift), AWS S3 (ROSA), Partner Storage
+2. **Development/Testing:** PVC, MinIO (with warnings)
 
 ### 2. Disconnected/Air-Gapped Requirements
 
