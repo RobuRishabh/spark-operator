@@ -3,6 +3,7 @@ package fixture
 import (
 	"context"
 
+	"github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -38,11 +39,13 @@ func ReadyDeployment(name, namespace string) *appsv1.Deployment {
 
 func CreateReadyDeployment(ctx context.Context, cli client.Client, name, namespace string) {
 	dep := ReadyDeployment(name, namespace)
-	_ = client.IgnoreAlreadyExists(cli.Create(ctx, dep))
+	gomega.Expect(client.IgnoreAlreadyExists(cli.Create(ctx, dep))).To(gomega.Succeed())
+	gomega.Expect(cli.Get(ctx, client.ObjectKeyFromObject(dep), dep)).To(gomega.Succeed())
 	dep.Status.AvailableReplicas = 1
+	dep.Status.UpdatedReplicas = 1
 	dep.Status.Replicas = 1
 	dep.Status.ReadyReplicas = 1
-	_ = cli.Status().Update(ctx, dep)
+	gomega.Expect(cli.Status().Update(ctx, dep)).To(gomega.Succeed())
 }
 
 func TriggerReconcile(ctx context.Context, cli client.Client, cr *platformv1alpha1.SparkOperator, trigger string) {

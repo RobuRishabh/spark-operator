@@ -37,6 +37,7 @@ func TestCheckDeploymentsReady_Available(t *testing.T) {
 		},
 	}
 	dep.Status.AvailableReplicas = 1
+	dep.Status.UpdatedReplicas = 1
 
 	cli := fake.NewClientBuilder().WithObjects(dep).WithStatusSubresource(dep).Build()
 	err := checkDeploymentsReady(context.Background(), cli, "opendatahub", []string{"spark-operator-controller"})
