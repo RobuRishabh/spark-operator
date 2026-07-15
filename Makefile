@@ -109,7 +109,7 @@ print-%: ; @echo $*=$($*)
 
 ##@ Development
 
-CONTROLLER_GEN_PATHS := ./api/...;./internal/...
+CONTROLLER_GEN_PATHS := ./api/...;./cmd/...;./internal/...
 
 .PHONY: manifests
 manifests: controller-gen ## Generate CustomResourceDefinition, RBAC and WebhookConfiguration manifests.
@@ -474,3 +474,5 @@ chmod +x "$(1)"; \
 rm -rf "$${tmp}"; \
 }
 endef
+
+-include Makefile.spark-operator-module.mk
