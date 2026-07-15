@@ -221,11 +221,8 @@ func uninstallViaHelm() {
 
 func installViaKustomize() {
 	repoRoot := filepath.Join("..", "..")
-	// Deploy the driver-pdb overlay so e2e exercises the --enable-driver-pdb
-	// feature, matching the helm ci-values.yaml (driverPodDisruptionBudget.enable=true).
-	// The overlay inherits config/default, including the image tag we rewrite below.
 	kustomizeDir := filepath.Join(repoRoot, "config", "overlays", "driver-pdb")
-	kustomizationPath := filepath.Join(repoRoot, "config", "default", "kustomization.yaml")
+	paramsPath := filepath.Join(repoRoot, "config", "default", "params.env")
 
 	imageTag := os.Getenv("IMAGE_TAG")
 	if imageTag != "" {
