@@ -268,21 +268,16 @@ Spark jobs need AWS credentials to write to S3.
 
 **3.1 Create Secret**
 
-```bash
-# Replace 'spark-test' with your SparkApplication namespace
-oc create namespace spark-test  # If it doesn't exist
+Edit `spark-s3-credentials.yaml` and replace placeholder values:
+- `YOUR_ACCESS_KEY_ID` - Your AWS Access Key ID
+- `YOUR_SECRET_ACCESS_KEY` - Your AWS Secret Access Key
 
-cat <<EOF | oc apply -f -
-apiVersion: v1
-kind: Secret
-metadata:
-  name: spark-s3-credentials
-  namespace: spark-test
-type: Opaque
-stringData:
-  AWS_ACCESS_KEY_ID: YOUR_ACCESS_KEY_ID
-  AWS_SECRET_ACCESS_KEY: YOUR_SECRET_ACCESS_KEY
-EOF
+```bash
+# Create namespace if needed
+oc create namespace spark-test
+
+# Apply credentials secret
+oc apply -f spark-s3-credentials.yaml
 ```
 
 **3.2 Verify Secret**
@@ -297,88 +292,23 @@ oc get secret spark-s3-credentials -n spark-test
 
 Now configure your Spark jobs to write event logs to S3.
 
-**4.1 Create SparkApplication with Event Logging**
+**4.1 Configure SparkApplication**
 
-Save as `spark-pi-with-eventlog.yaml`:
-
-```yaml
-apiVersion: sparkoperator.k8s.io/v1beta2
-kind: SparkApplication
-metadata:
-  name: spark-pi-eventlog
-  namespace: spark-test
-spec:
-  type: Scala
-  mode: cluster
-  image: quay.io/YOUR_USERNAME/spark-s3:4.0.1
-  imagePullPolicy: Always
-  mainClass: org.apache.spark.examples.SparkPi
-  mainApplicationFile: local:///opt/spark/examples/jars/spark-examples.jar
-  arguments:
-    - "1000"
-  sparkVersion: "4.0.1"
-  
-  restartPolicy:
-    type: Never
-  
-  sparkConf:
-    # Enable event logging
-    "spark.eventLog.enabled": "true"
-    "spark.eventLog.dir": "s3a://your-spark-event-logs/spark-event-logs/"
-    "spark.eventLog.compress": "true"
-    
-    # AWS S3 configuration
-    "spark.hadoop.fs.s3a.impl": "org.apache.hadoop.fs.s3a.S3AFileSystem"
-    "spark.hadoop.fs.s3a.aws.credentials.provider": "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider"
-  
-  driver:
-    cores: 1
-    memory: "1000m"
-    serviceAccount: spark-operator-spark
-    env:
-    - name: AWS_ACCESS_KEY_ID
-      valueFrom:
-        secretKeyRef:
-          name: spark-s3-credentials
-          key: AWS_ACCESS_KEY_ID
-    - name: AWS_SECRET_ACCESS_KEY
-      valueFrom:
-        secretKeyRef:
-          name: spark-s3-credentials
-          key: AWS_SECRET_ACCESS_KEY
-    - name: AWS_REGION
-      value: us-east-2
-  
-  executor:
-    cores: 1
-    instances: 2
-    memory: "1000m"
-    env:
-    - name: AWS_ACCESS_KEY_ID
-      valueFrom:
-        secretKeyRef:
-          name: spark-s3-credentials
-          key: AWS_ACCESS_KEY_ID
-    - name: AWS_SECRET_ACCESS_KEY
-      valueFrom:
-        secretKeyRef:
-          name: spark-s3-credentials
-          key: AWS_SECRET_ACCESS_KEY
-    - name: AWS_REGION
-      value: us-east-2
-```
+Edit `spark-pi-with-eventlog.yaml` and replace placeholder values:
+- `YOUR_USERNAME` - Your container registry username (line 9)
+- `YOUR-BUCKET-NAME` - Your S3 bucket name (line 21)
+- `us-east-2` - Your AWS region if different (lines 39, 50)
 
 **Key sparkConf settings:**
 - `spark.eventLog.enabled: "true"` - Enable event logging
-- `spark.eventLog.dir: "s3a://your-bucket/path/"` - S3 URI for event logs  
+- `spark.eventLog.dir: "s3a://YOUR-BUCKET-NAME/spark-event-logs/"` - S3 URI for event logs  
 - `spark.hadoop.fs.s3a.impl` - S3A FileSystem implementation
 
-**Note:** AWS S3 uses HTTPS by default and doesn't require endpoint configuration. Credentials are provided via environment variables.
+**Note:** AWS S3 uses HTTPS by default and doesn't require endpoint configuration. Credentials are provided via environment variables from the secret.
 
 **4.2 Submit the Job**
 
 ```bash
-# Update bucket name and image reference in the YAML first
 oc apply -f spark-pi-with-eventlog.yaml
 ```
 
