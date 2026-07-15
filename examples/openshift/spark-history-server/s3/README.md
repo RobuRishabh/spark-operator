@@ -573,15 +573,54 @@ Check History Server pod running: `oc get pods -n spark-test -l app=spark-histor
 
 ---
 
-## Next Steps
+## Advanced Configuration
 
-Now that you have Spark History Server working with AWS S3:
+### Per-Bucket S3 Configuration
 
-1. **Run more Spark jobs** - All jobs with event logging enabled will appear in History Server
-2. **Explore the UI** - Check Jobs, Stages, Executors tabs for performance insights
-3. **Set up lifecycle policies** - Configure S3 bucket lifecycle rules to auto-delete old logs
-4. **Enable versioning** - Turn on S3 versioning for additional data protection
+For complex scenarios where you need different S3 endpoints/credentials for different buckets (e.g., data on enterprise storage, logs in ODF), use per-bucket configuration:
+
+```yaml
+sparkConf:
+  # Global S3 settings (default for all buckets)
+  "spark.hadoop.fs.s3a.impl": "org.apache.hadoop.fs.s3a.S3AFileSystem"
+  
+  # Bucket-specific settings for data storage (e.g., enterprise storage)
+  "spark.hadoop.fs.s3a.bucket.my-data-bucket.endpoint": "enterprise-s3.company.com:9000"
+  "spark.hadoop.fs.s3a.bucket.my-data-bucket.access.key": "DATA_ACCESS_KEY"
+  "spark.hadoop.fs.s3a.bucket.my-data-bucket.secret.key": "DATA_SECRET_KEY"
+  "spark.hadoop.fs.s3a.bucket.my-data-bucket.path.style.access": "true"
+  "spark.hadoop.fs.s3a.bucket.my-data-bucket.connection.ssl.enabled": "true"
+  
+  # Bucket-specific settings for History Server logs (e.g., ODF)
+  "spark.hadoop.fs.s3a.bucket.history-logs.endpoint": "s3.openshift-storage.svc"
+  "spark.hadoop.fs.s3a.bucket.history-logs.access.key": "ODF_ACCESS_KEY"
+  "spark.hadoop.fs.s3a.bucket.history-logs.secret.key": "ODF_SECRET_KEY"
+  "spark.hadoop.fs.s3a.bucket.history-logs.path.style.access": "true"
+  "spark.hadoop.fs.s3a.bucket.history-logs.connection.ssl.enabled": "false"
+  
+  # Event logging to history bucket
+  "spark.eventLog.enabled": "true"
+  "spark.eventLog.dir": "s3a://history-logs/spark-events"
+```
+
+**Use cases:**
+- Data on enterprise storage, logs on ODF inside cluster
+- Different access controls (read-only history bucket, read-write data bucket)
+- Separate billing/compliance requirements
+
+**Reference:** Pattern from [Guillaume's example](https://github.com/guimou/spark-tpcds/blob/367d577c6ab062c10530bcfa7f7482bb4cd94b0f/examples/tpcds-benchmark-1G.yaml#L51)
 
 ---
 
-**Tested With:** Spark 4.0.1, AWS S3 (us-east-2), OpenShift 4.x
+## Next Steps
+
+Now that you have Spark History Server working with S3-compatible storage:
+
+1. **Run more Spark jobs** - All jobs with event logging enabled will appear in History Server
+2. **Explore the UI** - Check Jobs, Stages, Executors tabs for performance insights
+3. **Set up lifecycle policies** - Configure bucket lifecycle rules to auto-delete old logs (if supported by provider)
+4. **Consider per-bucket config** - For multi-tenant or multi-storage scenarios
+
+---
+
+**Tested With:** Spark 4.0.1, S3-compatible storage (AWS S3, ODF), OpenShift 4.x
