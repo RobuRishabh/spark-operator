@@ -1,14 +1,16 @@
-# Spark History Server Deployment with S3 Event Logs
+# Spark History Server Deployment with S3-Compatible Storage
 #
 # IMPORTANT: This configuration uses SimpleAWSCredentialsProvider which automatically
-# reads AWS credentials from environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY).
+# reads S3 credentials from environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY).
+# These env var names are the standard for all S3-compatible providers.
+#
 # Do NOT add -Dspark.hadoop.fs.s3a.access.key or -Dspark.hadoop.fs.s3a.secret.key to
 # SPARK_HISTORY_OPTS as this will cause conflicts and authentication failures.
 #
 # Before applying:
 # 1. Update YOUR_BUCKET_NAME in SPARK_HISTORY_OPTS
 # 2. Update YOUR_USERNAME in the image reference (or use an existing S3-enabled Spark image)
-# 3. Create spark-s3-credentials secret with your AWS credentials
+# 3. Create spark-s3-credentials secret with your S3 access credentials
 # 4. Ensure the Spark image includes hadoop-aws and aws-sdk JARs for S3A support
 #
 apiVersion: apps/v1

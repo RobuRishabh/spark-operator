@@ -1,10 +1,12 @@
-# Spark History Server with AWS S3 on OpenShift
+# Spark History Server with S3-Compatible Storage on OpenShift
 
-Complete guide to setting up Spark History Server with AWS S3 storage on OpenShift. This allows you to view Spark UI for completed jobs long after the driver pods have terminated.
+Complete guide to setting up Spark History Server with S3-compatible object storage on OpenShift. This allows you to view Spark UI for completed jobs long after the driver pods have terminated.
+
+**Works with any S3-compatible provider:** AWS S3, OpenShift Data Foundation, Google Cloud Storage, Azure Blob, NetApp, Pure Storage, Dell EMC, and more.
 
 ## Table of Contents
 - [What is Spark History Server](#what-is-spark-history-server)
-- [Why AWS S3](#why-aws-s3)
+- [Why S3-Compatible Storage](#why-s3-compatible-storage)
 - [Prerequisites](#prerequisites)
 - [Architecture Overview](#architecture-overview)
 - [Step-by-Step Setup](#step-by-step-setup)
@@ -44,15 +46,21 @@ If you've used Spark UI before, you know it's available on the driver pod (port 
 
 ---
 
-## Why AWS S3
+## Why S3-Compatible Storage
 
-For this setup, we use **AWS S3** - a managed object storage service.
+This guide uses the **S3 API** - an industry-standard protocol for object storage supported by many providers.
 
 **Advantages:**
-- ✅ **Managed service** - No infrastructure to maintain
-- ✅ **Highly available** - Built-in redundancy and durability
-- ✅ **Scalable** - Automatically handles any amount of event logs
-- ✅ **Simple configuration** - No custom endpoints or SSL settings needed
+- ✅ **Industry standard** - Widely supported protocol (AWS, GCP, Azure, on-prem vendors)
+- ✅ **Highly available** - Built-in redundancy and durability (varies by provider)
+- ✅ **Scalable** - Handles any amount of event logs
+- ✅ **Multi-namespace** - Single History Server can read logs from all namespaces
+
+**Example providers:**
+- AWS S3, Google Cloud Storage (S3-compatible API), Azure Blob Storage (S3-compatible)
+- OpenShift Data Foundation (Ceph RGW / NooBaa)
+- Enterprise vendors: NetApp, Pure Storage, Dell EMC
+- On-premises: Ceph, HDFS (with S3 gateway)
 
 ---
 
@@ -77,10 +85,10 @@ oc get pods -n spark-operator
 - `podman` or `docker` (for building custom image)
 - Access to push to a container registry (e.g., quay.io)
 
-### 4. AWS Account and Credentials
-- AWS account with S3 access
-- IAM user credentials (Access Key ID and Secret Access Key)
-- Permissions to create S3 buckets
+### 4. S3-Compatible Storage Access
+- S3-compatible storage endpoint (AWS, ODF, cloud provider, or enterprise storage)
+- Access credentials (Access Key ID and Secret Access Key)
+- Permissions to create buckets and write/read objects
 
 ---
 
@@ -146,18 +154,18 @@ The base Spark image doesn't include S3A libraries. We need to build a custom im
 The `Dockerfile.spark-s3` in this directory contains:
 
 ```dockerfile
-# Dockerfile for Spark with S3/MinIO support
+# Dockerfile for Spark with S3-compatible storage support
 # Based on official Spark image with added S3A dependencies
 FROM apache/spark:4.0.1
 
 LABEL maintainer="your-name"
 LABEL version="4.0.1-s3"
-LABEL description="Spark 4.0.1 with S3/MinIO support (hadoop-aws + aws-sdk)"
+LABEL description="Spark 4.0.1 with S3-compatible storage support (hadoop-aws + aws-sdk)"
 
 # Set the working directory
 WORKDIR /opt/spark
 
-# --- Add S3/MinIO Dependencies ---
+# --- Add S3-compatible storage dependencies ---
 # Download Hadoop AWS and AWS SDK JARs compatible with Spark 4.0.1
 USER root
 
@@ -230,30 +238,52 @@ Go to https://quay.io/repository/YOUR_USERNAME/spark-s3 → Settings → Make Pu
 
 ## Phase 2: Storage Setup
 
-Create an S3 bucket for event logs.
+Create an S3 bucket for event logs using your storage provider's tools.
 
 ### Step 2: Create S3 Bucket
 
-**2.1 Create Bucket via AWS Console**
+**2.1 Create Bucket**
 
-1. Go to [AWS S3 Console](https://s3.console.aws.amazon.com/s3/)
-2. Click **Create bucket**
-3. **Bucket name**: `your-spark-event-logs` (must be globally unique)
-4. **Region**: Choose your preferred region (e.g., `us-east-2`)
-5. Keep default settings (versioning, encryption optional)
-6. Click **Create bucket**
+The method depends on your storage provider:
 
-**2.2 Create Folder (Optional)**
+**AWS S3:**
+```bash
+aws s3 mb s3://your-spark-event-logs --region us-east-2
+```
 
-Navigate into your bucket and create a folder named `spark-event-logs/` to organize event logs.
+**OpenShift Data Foundation (ODF):**
+```bash
+# Create ObjectBucketClaim - ODF auto-creates bucket and credentials
+oc apply -f - <<EOF
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: spark-event-logs
+  namespace: spark-operator
+spec:
+  generateBucketName: spark-logs
+  storageClassName: openshift-storage.noobaa.io
+EOF
+```
 
-**2.3 Verify Bucket**
+**Google Cloud Storage:**
+```bash
+gsutil mb -l us-east1 gs://your-spark-event-logs
+```
+
+**Other providers:** Use your provider's CLI, web console, or API
+
+**2.2 Verify Bucket**
 
 ```bash
-# Using AWS CLI (if installed)
+# AWS S3
 aws s3 ls s3://your-spark-event-logs/
 
-# Should show empty or the spark-event-logs/ folder
+# Google Cloud Storage (S3-compatible API)
+aws s3 ls s3://your-spark-event-logs/ --endpoint-url https://storage.googleapis.com
+
+# ODF
+oc get objectbucketclaim spark-event-logs -n spark-operator
 ```
 
 ---
@@ -262,15 +292,17 @@ aws s3 ls s3://your-spark-event-logs/
 
 Configure Spark jobs to write event logs to S3.
 
-### Step 3: Create AWS Credentials Secret
+### Step 3: Create S3 Credentials Secret
 
-Spark jobs need AWS credentials to write to S3.
+Spark jobs need S3 access credentials to write to object storage.
 
 **3.1 Create Secret**
 
 Edit `spark-s3-credentials.yaml` and replace placeholder values:
-- `YOUR_ACCESS_KEY_ID` - Your AWS Access Key ID
-- `YOUR_SECRET_ACCESS_KEY` - Your AWS Secret Access Key
+- `YOUR_ACCESS_KEY_ID` - Your S3 Access Key ID (from your storage provider)
+- `YOUR_SECRET_ACCESS_KEY` - Your S3 Secret Access Key
+
+**Note:** The env var names (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`) are the industry standard used by all S3-compatible providers, not just AWS.
 
 ```bash
 # Create namespace if needed

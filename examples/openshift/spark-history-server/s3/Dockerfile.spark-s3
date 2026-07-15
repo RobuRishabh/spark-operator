@@ -1,15 +1,15 @@
-# Dockerfile for Spark with S3 support
+# Dockerfile for Spark with S3-compatible storage support
 # Based on official Spark image with added S3A dependencies
 FROM apache/spark:4.0.1
 
 LABEL maintainer="your-name"
 LABEL version="4.0.1-s3"
-LABEL description="Spark 4.0.1 with S3 support (hadoop-aws + aws-sdk)"
+LABEL description="Spark 4.0.1 with S3-compatible storage support (hadoop-aws + aws-sdk)"
 
 # Set the working directory
 WORKDIR /opt/spark
 
-# --- Add S3 Dependencies ---
+# --- Add S3-compatible storage dependencies ---
 # Download Hadoop AWS and AWS SDK JARs compatible with Spark 4.0.1
 USER root
 

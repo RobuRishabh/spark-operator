@@ -5,8 +5,21 @@ metadata:
   namespace: spark-test
 spec:
   accessModes:
-    - ReadWriteOnce  # EBS limitation - only one pod can mount
+    - ReadWriteMany  # Required for concurrent access (History Server + multiple Spark jobs)
   resources:
     requests:
-      storage: 20Gi
-  storageClassName: gp3-csi  # ROSA default StorageClass
+      storage: 50Gi
+  storageClassName: YOUR-RWX-STORAGE-CLASS  # Replace with your ReadWriteMany StorageClass
+
+# Examples of RWX StorageClasses by provider:
+# - ocs-storagecluster-cephfs      (OpenShift Data Foundation / Ceph)
+# - nfs-client                      (NFS provisioner)
+# - netapp-file                     (NetApp)
+# - px-shared                       (Portworx)
+# - efs-sc                          (AWS EFS)
+# - azurefile                       (Azure Files)
+# - ibm-spectrum-scale              (IBM Storage Fusion)
+#
+# To find available RWX storage classes in your cluster:
+#   oc get storageclass
+#   oc describe storageclass <name> | grep -A5 Parameters
