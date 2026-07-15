@@ -82,6 +82,10 @@ jobs:
       - name: Load image into Kind
         run: kind load docker-image quay.io/opendatahub/spark-operator-module-controller:test --name spark-operator
 
+      - name: Install PodMonitor CRD
+        run: |
+          kubectl apply -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/example/prometheus-operator-crd/monitoring.coreos.com_podmonitors.yaml
+
       - name: Run module operator E2E tests
         run: |
           cd spark-operator-module && \
