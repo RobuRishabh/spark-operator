@@ -36,7 +36,7 @@ spec:
   image: quay.io/opendatahub/data-processing:Spark-v4.0.1
   mainClass: org.apache.spark.examples.SparkPi
   mainApplicationFile: local:///opt/spark/examples/jars/spark-examples.jar
-  arguments: ["10000000"]  # Long-running for UI access
+  arguments: ["100000"]  # Long-running for UI access (adjust based on cluster resources)
   sparkVersion: "4.0.1"
   
   restartPolicy:
@@ -49,7 +49,7 @@ spec:
   
   executor:
     cores: 1
-    instances: 1
+    instances: 2
     memory: "1000m"
   
   # Driver ingress configuration for route creation
