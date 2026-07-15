@@ -141,9 +141,9 @@ Build a custom Spark image with S3A libraries.
 
 The base Spark image doesn't include S3A libraries. We need to build a custom image with Hadoop AWS dependencies.
 
-**1.1 Create Dockerfile**
+**1.1 Use the Provided Dockerfile**
 
-Save as `Dockerfile.spark-s3`:
+The `Dockerfile.spark-s3` in this directory contains:
 
 ```dockerfile
 # Dockerfile for Spark with S3/MinIO support
