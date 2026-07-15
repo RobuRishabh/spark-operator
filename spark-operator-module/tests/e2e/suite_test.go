@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -112,17 +113,14 @@ func installModuleOperator() {
 		origKustomization = data
 
 		imageName, imageTag := parseImageRef(moduleImage)
-		var newImage string
-		if strings.Contains(imageTag, "sha256:") {
-			newImage = fmt.Sprintf("spark-operator-module-controller=%s@%s", imageName, imageTag)
-		} else {
-			newImage = fmt.Sprintf("spark-operator-module-controller=%s:%s", imageName, imageTag)
-		}
-		kustomizeCmd := exec.Command("kustomize", "edit", "set", "image", newImage)
-		kustomizeCmd.Dir = kustomizeDir
-		kustomizeCmd.Stdout = GinkgoWriter
-		kustomizeCmd.Stderr = GinkgoWriter
-		Expect(kustomizeCmd.Run()).NotTo(HaveOccurred(), "Failed to run kustomize edit set image")
+
+		content := string(data)
+		nameRe := regexp.MustCompile(`(?m)(newName:\s*).*`)
+		content = nameRe.ReplaceAllString(content, "${1}"+imageName)
+		tagRe := regexp.MustCompile(`(?m)(newTag:\s*).*`)
+		content = tagRe.ReplaceAllString(content, "${1}"+imageTag)
+		Expect(os.WriteFile(kustomizationPath, []byte(content), 0644)).NotTo(HaveOccurred(),
+			"Failed to update kustomization.yaml image")
 	}
 
 	By("Creating module namespace")
