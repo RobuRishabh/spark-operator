@@ -23,10 +23,10 @@ Access the built-in Spark UI for running jobs to view:
 
 ### Access Methods
 
-| Method | Use Case |
-|--------|----------|
-| **OpenShift Route** | Production - shareable HTTPS URLs |
-| **Port-Forward** | Development/testing - quick local access |
+| Method | Use Case | Documentation |
+|--------|----------|---------------|
+| **OpenShift Route** | Production - shareable HTTPS URLs | [Route Access Guide](../spark-ui/route/) |
+| **Port-Forward** | Development/testing - quick local access | [Port-Forward Guide](../spark-ui/port-forward/) |
 
 **Recommendation:** Route-based access for production, port-forward for development.
 
@@ -125,117 +125,18 @@ The only external dependency is container image registry access (can be mirrored
 
 ---
 
-## Open Questions
+## Testing Status
 
-### 1. Storage Backend Strategy ✅ RESOLVED
+**Live Monitoring:**
+- ✅ **Route Access** - Tested and validated on ROSA
+- ✅ **Port-Forward Access** - Tested and validated on ROSA
 
-**Decision:** Document two generic approaches without vendor-specific recommendations.
+**History Server Storage:**
+- ✅ **S3-compatible** - Tested with AWS S3 on ROSA
+- ✅ **PVC** - Generic pattern, works with any RWX storage provider (tested hands-on with RWO gp3-csi on ROSA)
 
-**Rationale (from product team feedback - July 9, 2026):**
-- Focus on S3-compatible storage and RWX PVC as architectural patterns
-- No vendor-specific recommendations - architectural decision is customer-specific
-- Works with S3-compatible solutions: AWS S3, ODF, enterprise storage vendors, cloud providers
-- Works with RWX PVC: ODF/CephFS, NFS, enterprise storage, cloud file storage
-- Maintain same documentation stance as OpenShift AI data connections (S3-compatible, not vendor-specific)
-
-**Quote from field team:**
-> "We work with S3 compatible solutions. We don't say we work with Portworx, NetApp or whatever... That has been the stance for the past 4-5 years on this matter."
-
-### 2. Disconnected/Air-Gapped Requirements ✅ RESOLVED
-
-**Decision:** Explicitly document that both operator and History Server work in disconnected environments.
-
-**Documentation added:**
-> "Both the Spark Operator and History Server work in disconnected/air-gapped environments - neither component requires internet connectivity by default."
-
-**Field feedback:**
-> "It's still nice to have a line that says, 'By the way, neither the operator nor the history server by default are calling outside.' So, this totally works in an airgapped environment."
-
-### 3. ROSA Storage Limitations
-
-**Question:** Should we document AWS EFS setup for ROSA customers who want PVC approach?
-
-**Context:**
-- ROSA default storage (EBS) is ReadWriteOnce (RWO) - doesn't work for concurrent access
-- AWS EFS provides ReadWriteMany (RWX) but requires additional setup
-- Current development cluster only has EBS storage
-
-**Decision needed:**
-- [ ] Invest time in EFS setup documentation?
-- [ ] Or recommend S3 for all ROSA deployments?
-- [ ] Is there customer demand for PVC-based approach on ROSA?
-
-### 4. IAM Roles for Service Accounts (IRSA)
-
-**Question:** Should we validate and document IRSA for credential-free S3 access?
-
-**Context:**
-- Current S3 setup uses AWS access keys stored in Kubernetes secrets
-- IRSA allows pods to assume IAM roles via OIDC - eliminates credential secrets
-- Draft guide exists but hasn't been tested on ROSA cluster
-- More secure approach, better aligned with AWS best practices
-
-**Decision needed:**
-- [ ] Worth investing time to test and validate IRSA approach?
-- [ ] Should IRSA be recommended over access keys?
-- [ ] Is this a customer requirement or nice-to-have?
-
-### 5. Multi-Tenancy Topologies
-
-**Question:** Should we document per-namespace vs centralized History Server deployments?
-
-**Context:**
-- Large customers (e.g., RBC) have hundreds of teams/namespaces
-- Per-namespace: Simple RBAC but wasteful (100 pods for 100 teams)
-- Centralized: Efficient but requires access control (OAuth proxy)
-
-**Scope decision:**
-- [ ] Is multi-tenancy in scope for initial release?
-- [ ] Or defer to follow-up iteration?
-- [ ] Do we need Red Hat-specific UI customizations for access control?
-
-### 6. Production Readiness
-
-**Question:** What level of validation/testing is required before declaring each storage backend "production-ready"?
-
-**Current status:**
-- ✅ S3: Tested on ROSA cluster with AWS S3
-- ⚠️ PVC: Documented, tested on RWO (demo only), not tested on RWX (production scenario)
-
-**Input needed:**
-- [ ] What level of validation/testing is required before declaring production-ready?
-
----
-
-## Success Criteria
-
-From the original RFE:
-
-**Live Spark Application UI:**
-- ✅ Documentation published for Route access (production)
-- ✅ Documentation published for port-forward access (development)
-- ✅ Users can successfully access running job UI
-
-**Spark History Server:**
-- ✅ Documentation published for History Server deployment
-- ✅ Event log configuration documented
-- ✅ Users can successfully view completed/failed job history
-
-**Blog and Demo:**
-- 📝 Blog post showing end-to-end workflow (pending)
-- 📝 Demo recording or walkthrough (pending)
-
----
-
-## Next Steps
-
-**Next Steps:**
-
-1. Review storage decision tree - does it align with target customer profiles?
-2. Prioritize open questions - which need answers before release?
-3. Define support boundaries - what's "supported" vs "community-documented"?
-4. Complete blog post and demo
-5. Additional testing based on feedback
+**Security:**
+- ✅ Route accessibility verified - publicly accessible by default (documented with security warnings)
 
 ---
 
