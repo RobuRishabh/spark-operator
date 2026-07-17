@@ -120,23 +120,22 @@ The only external dependency is container image registry access (can be mirrored
 - ✅ **[S3 Setup](../spark-history-server/s3/)** - S3-compatible object storage
 - ✅ **[PVC Setup](../spark-history-server/pvc/)** - ReadWriteMany PVC storage
 
-### Pending
-- 📝 Blog post: "How to Debug Spark Jobs on OpenShift" (observability-focused)
-
 ---
 
-## Testing Status
+## Validated Configurations
+
+The following configurations have been tested hands-on on ROSA:
 
 **Live Monitoring:**
-- ✅ **Route Access** - Tested and validated on ROSA
-- ✅ **Port-Forward Access** - Tested and validated on ROSA
+- ✅ Route Access
+- ✅ Port-Forward Access
 
 **History Server Storage:**
-- ✅ **S3-compatible** - Tested with AWS S3 on ROSA
-- ✅ **PVC** - Generic pattern, works with any RWX storage provider (tested hands-on with RWO gp3-csi on ROSA)
+- ✅ S3-compatible storage (AWS S3)
+- ✅ PVC storage (RWO gp3-csi; pattern applies to any RWX provider)
 
 **Security:**
-- ✅ Route accessibility verified - publicly accessible by default (documented with security warnings)
+- ✅ Route public accessibility verified and documented
 
 ---
 
@@ -144,7 +143,3 @@ The only external dependency is container image registry access (can be mirrored
 
 - **RFE:** RHAIRFE-1478
 - **Kubeflow Spark Operator Docs:** https://www.kubeflow.org/docs/components/spark-operator/
-
----
-
-**Last Updated:** June 30, 2026
