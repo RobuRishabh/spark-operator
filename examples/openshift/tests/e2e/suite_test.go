@@ -61,9 +61,9 @@ import (
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
 const (
-	ReleaseName              = "spark-operator"
-	DefaultReleaseNamespace  = "spark-operator"
-	TestNamespace            = "spark-test"
+	ReleaseName             = "spark-operator"
+	DefaultReleaseNamespace = "spark-operator"
+	TestNamespace           = "spark-test"
 
 	PollInterval = 1 * time.Second
 	WaitTimeout  = 5 * time.Minute
