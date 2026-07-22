@@ -161,6 +161,9 @@ jobs:
           echo "=== SparkApplications ==="
           kubectl get sparkapplications -A -o yaml 2>/dev/null || true
           echo ""
+          echo "=== SparkConnects ==="
+          kubectl get sparkconnects -A -o yaml 2>/dev/null || true
+          echo ""
           echo "=== Events ==="
           kubectl get events -A --sort-by='.lastTimestamp' | tail -50 || true
           echo ""
