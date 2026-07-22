@@ -71,67 +71,6 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
-          go-version-file: spark-operator-module/go.mod
-
-      - name: Create Kind cluster
-        run: make kind-create-cluster
-
-      - name: Build module operator image
-        run: make docker-build-spark-operator-module TAG=test
-
-      - name: Load image into Kind
-        run: kind load docker-image quay.io/opendatahub/spark-operator-module-controller:test --name spark-operator
-
-      - name: Install PodMonitor CRD
-        run: |
-          kubectl apply -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/example/prometheus-operator-crd/monitoring.coreos.com_podmonitors.yaml
-
-      - name: Run module operator E2E tests
-        run: |
-          cd spark-operator-module && \
-          MODULE_IMAGE=quay.io/opendatahub/spark-operator-module-controller:test \
-          go test ./tests/e2e/ -v -timeout 10m -count=1
-
-      - name: Debug - Show cluster state
-        if: failure()
-        run: |
-          echo "=== Pods in all namespaces ==="
-          kubectl get pods -A || true
-          echo ""
-          echo "=== SparkOperator CRs ==="
-          kubectl get sparkoperator -A -o yaml 2>/dev/null || true
-          echo ""
-          echo "=== Events in opendatahub namespace ==="
-          kubectl get events -n opendatahub --sort-by='.lastTimestamp' 2>/dev/null | tail -30 || true
-          echo ""
-          echo "=== Module operator logs ==="
-          kubectl logs -n opendatahub deployment/spark-operator-module-controller-manager -c manager --tail=100 2>/dev/null || true
-
-  e2e-spark-operator-preinstalled:
-    runs-on: ubuntu-latest
-    needs: e2e-module-operator
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout source code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-
-      - name: Merge target branch
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git fetch --unshallow origin || true
-          git fetch origin "$BASE_REF"
-          git merge --no-edit origin/"$BASE_REF"
-
-      - name: Setup Go
-        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
-        with:
           go-version-file: go.mod
 
       - name: Create Kind cluster
@@ -151,18 +90,14 @@ jobs:
 
       - name: Install PodMonitor CRD
         run: |
-          kubectl apply -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/example/prometheus-operator-crd/monitoring.coreos.com_podmonitors.yaml
+          kubectl apply -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.92.1/example/prometheus-operator-crd/monitoring.coreos.com_podmonitors.yaml
 
-      - name: Deploy module operator
+      - name: Run module operator E2E tests
         run: |
-          cd spark-operator-module/config/default && \
-            sed -i 's|newName: .*|newName: quay.io/opendatahub/spark-operator-module-controller|' kustomization.yaml && \
-            sed -i 's|newTag: .*|newTag: test|' kustomization.yaml
-          kubectl create namespace opendatahub --dry-run=client -o yaml | kubectl apply -f -
-          kubectl apply -k spark-operator-module/config/default --server-side=true
-
-      - name: Wait for module operator deployment
-        run: kubectl rollout status deployment/spark-operator-module-controller-manager -n opendatahub --timeout=120s
+          cd spark-operator-module && \
+          CLEANUP=false \
+          MODULE_IMAGE=quay.io/opendatahub/spark-operator-module-controller:test \
+          go test ./tests/e2e/ -v -timeout 10m -count=1
 
       - name: Override spark-operator image on module operator
         run: |
@@ -211,6 +146,7 @@ jobs:
       - name: Run spark-operator E2E tests (preinstalled mode)
         run: |
           INSTALL_METHOD=preinstalled \
+          RELEASE_NAMESPACE=opendatahub \
           go test ./examples/openshift/tests/e2e/ -v -timeout 10m -count=1
 
       - name: Debug - Show cluster state
