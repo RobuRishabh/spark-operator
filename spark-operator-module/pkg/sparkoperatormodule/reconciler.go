@@ -80,6 +80,7 @@ func (r *SparkOperatorModuleReconciler) Reconcile(ctx context.Context, req ctrl.
 		}
 		applyProvisioningCondition(condMgr, nil)
 		condMgr.ClearCondition(ConditionSparkOperatorReady)
+		condMgr.ClearCondition(string(common.ConditionTypeDegraded))
 		return ctrl.Result{}, nil
 	}
 

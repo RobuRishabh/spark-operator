@@ -244,6 +244,17 @@ var _ = Describe("SparkOperatorModule Reconciler", func() {
 				g.Expect(cond.Status).To(Equal(metav1.ConditionTrue))
 			}).WithContext(ctx).Should(Succeed())
 
+			// Set Degraded=True first; Removed must clear it (readiness updater is skipped).
+			fixture.CreateReadyDeployment(ctx, testEnv.Client, "spark-operator-controller", "opendatahub")
+			fixture.TriggerReconcile(ctx, testEnv.Client, cr, "partial-before-removed")
+			Eventually(func(g Gomega) {
+				g.Expect(testEnv.Client.Get(ctx, client.ObjectKeyFromObject(cr), cr)).To(Succeed())
+				degraded := fixture.FindCondition(cr, string(common.ConditionTypeDegraded))
+				g.Expect(degraded).NotTo(BeNil())
+				g.Expect(degraded.Status).To(Equal(metav1.ConditionTrue))
+				g.Expect(degraded.Reason).To(Equal("PartialAvailability"))
+			}).WithContext(ctx).Should(Succeed())
+
 			Expect(testEnv.Client.Get(ctx, client.ObjectKeyFromObject(cr), cr)).To(Succeed())
 			cr.Spec.ManagementState = common.Removed
 			Expect(testEnv.Client.Update(ctx, cr)).To(Succeed())
@@ -252,6 +263,8 @@ var _ = Describe("SparkOperatorModule Reconciler", func() {
 				g.Expect(testEnv.Client.Get(ctx, client.ObjectKeyFromObject(cr), cr)).To(Succeed())
 				sparkReady := fixture.FindCondition(cr, sparkoperatormodule.ConditionSparkOperatorReady)
 				g.Expect(sparkReady).To(BeNil())
+				degraded := fixture.FindCondition(cr, string(common.ConditionTypeDegraded))
+				g.Expect(degraded).To(BeNil())
 			}).WithContext(ctx).Should(Succeed())
 
 			Expect(testEnv.Client.Get(ctx, client.ObjectKeyFromObject(cr), cr)).To(Succeed())
