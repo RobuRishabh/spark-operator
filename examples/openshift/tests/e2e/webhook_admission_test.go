@@ -37,10 +37,14 @@ var _ = Describe("Validating webhook admission", func() {
 		mainFile := "local:///opt/spark/examples/jars/spark-examples.jar"
 
 		It("should reject a SparkApplication with conflicting node selectors", func() {
+			// Use "default" namespace because the webhook namespaceSelector always
+			// includes it. The test namespace (spark-test) is added by
+			// patchWebhookNamespaceSelectors, but the webhook controller's CA-bundle
+			// reconciliation loop can overwrite the patch before this test runs.
 			app := &v1beta2.SparkApplication{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "webhook-reject-nodeselector",
-					Namespace: TestNamespace,
+					Namespace: "default",
 				},
 				Spec: v1beta2.SparkApplicationSpec{
 					Type:                v1beta2.SparkApplicationTypeScala,
@@ -80,7 +84,7 @@ var _ = Describe("Validating webhook admission", func() {
 			app := &v1beta2.SparkApplication{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "webhook-accept-dry-run",
-					Namespace: TestNamespace,
+					Namespace: "default",
 				},
 				Spec: v1beta2.SparkApplicationSpec{
 					Type:                v1beta2.SparkApplicationTypeScala,
