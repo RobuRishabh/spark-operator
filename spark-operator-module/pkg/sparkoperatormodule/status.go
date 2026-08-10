@@ -21,6 +21,7 @@ func newConditionManager(sparkOperator *platformv1alpha1.SparkOperator) *conditi
 	return conditions.NewManager(sparkOperator,
 		string(common.ConditionTypeReady),
 		string(common.ConditionTypeProvisioningSucceeded),
+		string(common.ConditionTypeDegraded),
 		ConditionSparkOperatorReady,
 	)
 }
@@ -46,6 +47,7 @@ func (r *SparkOperatorModuleReconciler) updateComponentReadiness(ctx context.Con
 
 	if platformv1alpha1.GetManagementState(sparkOperator) == common.Removed {
 		condMgr.ClearCondition(ConditionSparkOperatorReady)
+		condMgr.ClearCondition(string(common.ConditionTypeDegraded))
 		return
 	}
 
@@ -54,11 +56,23 @@ func (r *SparkOperatorModuleReconciler) updateComponentReadiness(ctx context.Con
 		condMgr.MarkFalse(ConditionSparkOperatorReady,
 			conditions.WithReason("DeploymentNotReady"),
 			conditions.WithMessage("%s", err.Error()))
+
+		ready, total := countReadyDeployments(ctx, r.Client, ns)
+		if ready > 0 && ready < total {
+			condMgr.MarkTrue(string(common.ConditionTypeDegraded),
+				conditions.WithReason("PartialAvailability"),
+				conditions.WithMessage("%d of %d deployments available", ready, total))
+		} else {
+			condMgr.MarkFalse(string(common.ConditionTypeDegraded),
+				conditions.WithReason("NotDegraded"))
+		}
 		return
 	}
 
 	condMgr.MarkTrue(ConditionSparkOperatorReady,
 		conditions.WithReason("AllDeploymentsAvailable"))
+	condMgr.MarkFalse(string(common.ConditionTypeDegraded),
+		conditions.WithReason("NotDegraded"))
 }
 
 func (r *SparkOperatorModuleReconciler) updateStatus(ctx context.Context,
