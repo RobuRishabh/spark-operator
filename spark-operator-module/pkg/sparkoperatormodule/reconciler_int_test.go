@@ -244,7 +244,9 @@ var _ = Describe("SparkOperatorModule Reconciler", func() {
 				g.Expect(cond.Status).To(Equal(metav1.ConditionTrue))
 			}).WithContext(ctx).Should(Succeed())
 
-			// Set Degraded=True first; Removed must clear it (readiness updater is skipped).
+			webhookDep := fixture.ReadyDeployment("spark-operator-webhook", "opendatahub")
+			_ = client.IgnoreNotFound(testEnv.Client.Delete(ctx, webhookDep))
+
 			fixture.CreateReadyDeployment(ctx, testEnv.Client, "spark-operator-controller", "opendatahub")
 			fixture.TriggerReconcile(ctx, testEnv.Client, cr, "partial-before-removed")
 			Eventually(func(g Gomega) {
