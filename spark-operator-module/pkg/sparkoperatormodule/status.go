@@ -61,10 +61,12 @@ func (r *SparkOperatorModuleReconciler) updateComponentReadiness(ctx context.Con
 		if ready > 0 && ready < total {
 			condMgr.MarkTrue(string(common.ConditionTypeDegraded),
 				conditions.WithReason("PartialAvailability"),
-				conditions.WithMessage("%d of %d deployments available", ready, total))
+				conditions.WithMessage("%d of %d deployments available", ready, total),
+				conditions.WithSeverity(common.ConditionSeverityInfo))
 		} else {
 			condMgr.MarkFalse(string(common.ConditionTypeDegraded),
-				conditions.WithReason("NotDegraded"))
+				conditions.WithReason("NotDegraded"),
+				conditions.WithSeverity(common.ConditionSeverityInfo))
 		}
 		return
 	}
@@ -72,7 +74,8 @@ func (r *SparkOperatorModuleReconciler) updateComponentReadiness(ctx context.Con
 	condMgr.MarkTrue(ConditionSparkOperatorReady,
 		conditions.WithReason("AllDeploymentsAvailable"))
 	condMgr.MarkFalse(string(common.ConditionTypeDegraded),
-		conditions.WithReason("NotDegraded"))
+		conditions.WithReason("NotDegraded"),
+		conditions.WithSeverity(common.ConditionSeverityInfo))
 }
 
 func (r *SparkOperatorModuleReconciler) updateStatus(ctx context.Context,
