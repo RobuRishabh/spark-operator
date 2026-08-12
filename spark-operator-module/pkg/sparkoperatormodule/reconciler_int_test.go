@@ -162,8 +162,8 @@ var _ = Describe("SparkOperatorModule Reconciler", func() {
 				g.Expect(cr.Status.Phase).To(Equal(common.PhaseReady))
 				g.Expect(cr.Status.ObservedGeneration).To(Equal(cr.Generation))
 				g.Expect(cr.Status.Releases).NotTo(BeEmpty())
-				g.Expect(cr.Status.Releases[0].Name).To(Equal("Spark Operator"))
-				g.Expect(cr.Status.Releases[0].Version).To(Equal("v2.4.0"))
+				g.Expect(cr.Status.Releases[0].Name).To(Equal(fixture.TestReleaseName))
+				g.Expect(cr.Status.Releases[0].Version).To(Equal(fixture.TestReleaseVersion))
 			}).WithContext(ctx).Should(Succeed())
 		})
 
@@ -212,6 +212,37 @@ var _ = Describe("SparkOperatorModule Reconciler", func() {
 				degraded := fixture.FindCondition(cr, string(common.ConditionTypeDegraded))
 				g.Expect(degraded).NotTo(BeNil())
 				g.Expect(degraded.Status).To(Equal(metav1.ConditionFalse))
+			}).WithContext(ctx).Should(Succeed())
+		})
+
+		It("sets Degraded=False with NotDegraded during full outage (both deployments down)", func(ctx SpecContext) {
+			ctrlDep := fixture.ReadyDeployment("spark-operator-controller", "opendatahub")
+			_ = client.IgnoreNotFound(testEnv.Client.Delete(ctx, ctrlDep))
+			webhookDep := fixture.ReadyDeployment("spark-operator-webhook", "opendatahub")
+			_ = client.IgnoreNotFound(testEnv.Client.Delete(ctx, webhookDep))
+
+			fixture.TriggerReconcile(ctx, testEnv.Client, cr, "full-outage")
+
+			Eventually(func(g Gomega) {
+				g.Expect(testEnv.Client.Get(ctx, client.ObjectKeyFromObject(cr), cr)).To(Succeed())
+
+				sparkReady := fixture.FindCondition(cr, sparkoperatormodule.ConditionSparkOperatorReady)
+				g.Expect(sparkReady).NotTo(BeNil())
+				g.Expect(sparkReady.Status).To(Equal(metav1.ConditionFalse))
+
+				degraded := fixture.FindCondition(cr, string(common.ConditionTypeDegraded))
+				g.Expect(degraded).NotTo(BeNil())
+				g.Expect(degraded.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(degraded.Reason).To(Equal("NotDegraded"))
+			}).WithContext(ctx).Should(Succeed())
+
+			fixture.CreateReadyDeployment(ctx, testEnv.Client, "spark-operator-controller", "opendatahub")
+			fixture.CreateReadyDeployment(ctx, testEnv.Client, "spark-operator-webhook", "opendatahub")
+			fixture.TriggerReconcile(ctx, testEnv.Client, cr, "recover-full-outage")
+
+			Eventually(func(g Gomega) {
+				g.Expect(testEnv.Client.Get(ctx, client.ObjectKeyFromObject(cr), cr)).To(Succeed())
+				g.Expect(cr.Status.Phase).To(Equal(common.PhaseReady))
 			}).WithContext(ctx).Should(Succeed())
 		})
 
