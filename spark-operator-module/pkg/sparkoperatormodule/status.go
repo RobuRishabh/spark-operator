@@ -51,31 +51,23 @@ func (r *SparkOperatorModuleReconciler) updateComponentReadiness(ctx context.Con
 		return
 	}
 
+	// Degraded is a mandatory platform contract condition but Spark has no
+	// optional sub-components — both controller and webhook are core. If
+	// either is down it is a full outage (Ready=False), not a degraded state.
+	condMgr.MarkFalse(string(common.ConditionTypeDegraded),
+		conditions.WithReason("NotDegraded"),
+		conditions.WithSeverity(common.ConditionSeverityInfo))
+
 	ns := r.getApplicationsNamespace(ctx)
 	if err := checkSparkOperatorReadiness(ctx, r.Client, ns); err != nil {
 		condMgr.MarkFalse(ConditionSparkOperatorReady,
 			conditions.WithReason("DeploymentNotReady"),
 			conditions.WithMessage("%s", err.Error()))
-
-		ready, total := countReadyDeployments(ctx, r.Client, ns)
-		if ready > 0 && ready < total {
-			condMgr.MarkTrue(string(common.ConditionTypeDegraded),
-				conditions.WithReason("PartialAvailability"),
-				conditions.WithMessage("%d of %d deployments available", ready, total),
-				conditions.WithSeverity(common.ConditionSeverityInfo))
-		} else {
-			condMgr.MarkFalse(string(common.ConditionTypeDegraded),
-				conditions.WithReason("NotDegraded"),
-				conditions.WithSeverity(common.ConditionSeverityInfo))
-		}
 		return
 	}
 
 	condMgr.MarkTrue(ConditionSparkOperatorReady,
 		conditions.WithReason("AllDeploymentsAvailable"))
-	condMgr.MarkFalse(string(common.ConditionTypeDegraded),
-		conditions.WithReason("NotDegraded"),
-		conditions.WithSeverity(common.ConditionSeverityInfo))
 }
 
 func (r *SparkOperatorModuleReconciler) updateStatus(ctx context.Context,

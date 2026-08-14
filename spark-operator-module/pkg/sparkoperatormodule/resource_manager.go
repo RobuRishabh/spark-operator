@@ -41,16 +41,6 @@ func checkSparkOperatorReadiness(ctx context.Context, cli client.Client, namespa
 	return checkDeploymentsReady(ctx, cli, namespace, sparkOperatorDeployments)
 }
 
-func countReadyDeployments(ctx context.Context, cli client.Client, namespace string) (ready, total int) {
-	total = len(sparkOperatorDeployments)
-	for _, name := range sparkOperatorDeployments {
-		if err := checkDeploymentsReady(ctx, cli, namespace, []string{name}); err == nil {
-			ready++
-		}
-	}
-	return ready, total
-}
-
 func (r *SparkOperatorModuleReconciler) defaultCleanup(ctx context.Context, comp componentConfig) error {
 	log := ctrl.LoggerFrom(ctx)
 
