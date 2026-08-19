@@ -58,8 +58,8 @@ import (
 )
 
 const (
-	ReleaseName = "spark-operator"
-	TestNamespace    = "spark-test"
+	ReleaseName   = "spark-operator"
+	TestNamespace = "spark-test"
 
 	PollInterval = 1 * time.Second
 	WaitTimeout  = 5 * time.Minute
