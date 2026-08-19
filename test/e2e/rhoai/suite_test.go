@@ -107,7 +107,7 @@ var _ = BeforeSuite(func() {
 	}
 
 	switch installMethod {
-	case InstallMethodKustomize:
+	case InstallMethodKustomize, InstallMethodPreinstalled:
 		mutatingWebhookName = "mutating-webhook-configuration"
 		validatingWebhookName = "validating-webhook-configuration"
 	default:
