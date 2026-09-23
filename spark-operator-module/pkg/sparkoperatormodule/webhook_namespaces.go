@@ -19,20 +19,6 @@ func applyWebhookJobNamespaces(resources []unstructured.Unstructured, namespaces
 		return fmt.Errorf("job namespaces must not be empty")
 	}
 
-	values := make([]any, len(namespaces))
-	for i, ns := range namespaces {
-		values[i] = ns
-	}
-	selector := map[string]any{
-		"matchExpressions": []any{
-			map[string]any{
-				"key":      namespaceNameLabel,
-				"operator": "In",
-				"values":   values,
-			},
-		},
-	}
-
 	for i := range resources {
 		kind := resources[i].GetKind()
 		if kind != mutatingWebhookKind && kind != validatingWebhookKind {
@@ -50,7 +36,9 @@ func applyWebhookJobNamespaces(resources []unstructured.Unstructured, namespaces
 			if !ok {
 				return fmt.Errorf("%s/%s webhooks[%d] is not an object", kind, resources[i].GetName(), wi)
 			}
-			webhook["namespaceSelector"] = selector
+			// Fresh selector per webhook so later mutation of one entry cannot
+			// silently change siblings that share a map reference.
+			webhook["namespaceSelector"] = namespaceSelectorForJobNamespaces(namespaces)
 			webhooks[wi] = webhook
 		}
 		if err := unstructured.SetNestedSlice(resources[i].Object, webhooks, "webhooks"); err != nil {
@@ -58,4 +46,20 @@ func applyWebhookJobNamespaces(resources []unstructured.Unstructured, namespaces
 		}
 	}
 	return nil
+}
+
+func namespaceSelectorForJobNamespaces(namespaces []string) map[string]any {
+	values := make([]any, len(namespaces))
+	for i, ns := range namespaces {
+		values[i] = ns
+	}
+	return map[string]any{
+		"matchExpressions": []any{
+			map[string]any{
+				"key":      namespaceNameLabel,
+				"operator": "In",
+				"values":   values,
+			},
+		},
+	}
 }

@@ -82,3 +82,38 @@ func TestApplyWebhookJobNamespaces_EmptyRejected(t *testing.T) {
 	g := NewWithT(t)
 	g.Expect(applyWebhookJobNamespaces(nil, nil)).To(HaveOccurred())
 }
+
+func TestApplyWebhookJobNamespaces_SelectorsAreIndependent(t *testing.T) {
+	g := NewWithT(t)
+
+	resources := []unstructured.Unstructured{
+		{
+			Object: map[string]any{
+				"apiVersion": "admissionregistration.k8s.io/v1",
+				"kind":       "MutatingWebhookConfiguration",
+				"metadata":   map[string]any{"name": "mutating-webhook-configuration"},
+				"webhooks": []any{
+					map[string]any{"name": "mutate-a.sparkoperator.k8s.io"},
+					map[string]any{"name": "mutate-b.sparkoperator.k8s.io"},
+				},
+			},
+		},
+	}
+
+	g.Expect(applyWebhookJobNamespaces(resources, []string{"default", "spark-bench-a"})).To(Succeed())
+
+	webhooks, _, err := unstructured.NestedSlice(resources[0].Object, "webhooks")
+	g.Expect(err).NotTo(HaveOccurred())
+
+	sel0 := webhooks[0].(map[string]any)["namespaceSelector"].(map[string]any)
+	sel1 := webhooks[1].(map[string]any)["namespaceSelector"].(map[string]any)
+	g.Expect(sel0).NotTo(BeIdenticalTo(sel1))
+
+	exprs0 := sel0["matchExpressions"].([]any)
+	values0 := exprs0[0].(map[string]any)["values"].([]any)
+	values0[0] = "mutated"
+
+	exprs1 := sel1["matchExpressions"].([]any)
+	values1 := exprs1[0].(map[string]any)["values"].([]any)
+	g.Expect(values1[0]).To(Equal("default"))
+}
