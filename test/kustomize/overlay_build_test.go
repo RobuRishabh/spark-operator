@@ -76,16 +76,6 @@ func overlayFindResource(resources []unstructured.Unstructured, kind, name strin
 	return nil
 }
 
-func overlayFindResources(resources []unstructured.Unstructured, kind string) []unstructured.Unstructured {
-	var out []unstructured.Unstructured
-	for i := range resources {
-		if resources[i].GetKind() == kind {
-			out = append(out, resources[i])
-		}
-	}
-	return out
-}
-
 func overlayConvertTo[T any](t *testing.T, obj *unstructured.Unstructured) *T {
 	t.Helper()
 	data, err := json.Marshal(obj.Object)
