@@ -27,6 +27,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
@@ -91,6 +93,18 @@ func overlayConvertTo[T any](t *testing.T, obj *unstructured.Unstructured) *T {
 	result := new(T)
 	require.NoError(t, json.Unmarshal(data, result))
 	return result
+}
+
+func networkPolicyPorts(np *networkingv1.NetworkPolicy) []int32 {
+	var ports []int32
+	for _, rule := range np.Spec.Ingress {
+		for _, p := range rule.Ports {
+			if p.Port != nil {
+				ports = append(ports, p.Port.IntVal)
+			}
+		}
+	}
+	return ports
 }
 
 // TestOverlayBuilds validates that both ODH and RHOAI overlays build
@@ -205,9 +219,80 @@ func TestOverlayBuilds(t *testing.T) {
 					"PodMonitor should have monitoring label for observability stack")
 			})
 
-			t.Run("NetworkPolicy", func(t *testing.T) {
-				nps := overlayFindResources(resources, "NetworkPolicy")
-				assert.NotEmpty(t, nps, "overlay %s should include NetworkPolicy", overlay.name)
+			t.Run("SparkJobNetworkPolicyUnchanged", func(t *testing.T) {
+				obj := overlayFindResource(resources, "NetworkPolicy", "spark-operator-allow-internal")
+				require.NotNil(t, obj, "overlay %s must keep spark-operator-allow-internal", overlay.name)
+				np := overlayConvertTo[networkingv1.NetworkPolicy](t, obj)
+				assert.Equal(t, overlay.namespace, np.Namespace)
+				assert.Equal(t, "true", np.Spec.PodSelector.MatchLabels["sparkoperator.k8s.io/launched-by-spark-operator"],
+					"spark-operator-allow-internal must keep selecting Spark job pods only")
+				assert.NotContains(t, np.Spec.PodSelector.MatchLabels, "app.kubernetes.io/name",
+					"spark-operator-allow-internal must not be retargeted at operator pods")
+				ports := networkPolicyPorts(np)
+				assert.ElementsMatch(t, []int32{7078, 7079, 4040, 15002}, ports,
+					"spark-operator-allow-internal ports must stay Spark RPC/UI/Connect — do not add 8080 here")
+			})
+
+			t.Run("MetricsScrapeNetworkPolicy", func(t *testing.T) {
+				obj := overlayFindResource(resources, "NetworkPolicy", "spark-operator-allow-metrics")
+				require.NotNil(t, obj, "overlay %s must include spark-operator-allow-metrics so UWM can scrape :8080", overlay.name)
+				np := overlayConvertTo[networkingv1.NetworkPolicy](t, obj)
+				assert.Equal(t, overlay.namespace, np.Namespace)
+
+				assert.Equal(t, "spark-operator", np.Spec.PodSelector.MatchLabels["app.kubernetes.io/name"],
+					"metrics NP must select controller/webhook pods")
+				assert.NotContains(t, np.Spec.PodSelector.MatchLabels, "sparkoperator.k8s.io/launched-by-spark-operator",
+					"metrics NP must not select Spark job pods")
+
+				require.Equal(t, []networkingv1.PolicyType{networkingv1.PolicyTypeIngress}, np.Spec.PolicyTypes)
+				require.Len(t, np.Spec.Ingress, 1, "metrics NP must be a single ingress rule")
+				rule := np.Spec.Ingress[0]
+				require.Len(t, rule.Ports, 1)
+				require.NotNil(t, rule.Ports[0].Port)
+				assert.Equal(t, int32(8080), rule.Ports[0].Port.IntVal)
+				require.NotNil(t, rule.Ports[0].Protocol)
+				assert.Equal(t, corev1.ProtocolTCP, *rule.Ports[0].Protocol)
+
+				require.Len(t, rule.From, 1, "metrics NP must not open 8080 to extra peers")
+				from := rule.From[0]
+				assert.Nil(t, from.PodSelector, "do not allow all pods via empty podSelector")
+				require.NotNil(t, from.NamespaceSelector)
+				assert.Equal(t, map[string]string{"network.openshift.io/policy-group": "monitoring"},
+					from.NamespaceSelector.MatchLabels,
+					"8080 must be limited to OpenShift monitoring namespaces (cluster + user-workload)")
+				assert.Empty(t, from.NamespaceSelector.MatchExpressions)
+			})
+
+			t.Run("MetricsPortMatchesPodMonitorAndDeployments", func(t *testing.T) {
+				pmObj := overlayFindResource(resources, "PodMonitor", "spark-operator-podmonitor")
+				require.NotNil(t, pmObj)
+				endpoints, found, err := unstructured.NestedSlice(pmObj.Object, "spec", "podMetricsEndpoints")
+				require.NoError(t, err)
+				require.True(t, found)
+				require.NotEmpty(t, endpoints)
+				ep, ok := endpoints[0].(map[string]any)
+				require.True(t, ok)
+				assert.Equal(t, "metrics", ep["port"])
+				assert.Equal(t, "/metrics", ep["path"])
+
+				for _, depName := range []string{"spark-operator-controller", "spark-operator-webhook"} {
+					depObj := overlayFindResource(resources, "Deployment", depName)
+					require.NotNil(t, depObj)
+					dep := overlayConvertTo[appsv1.Deployment](t, depObj)
+					require.NotEmpty(t, dep.Spec.Template.Spec.Containers)
+					c := dep.Spec.Template.Spec.Containers[0]
+					var metricsPort *corev1.ContainerPort
+					for i := range c.Ports {
+						if c.Ports[i].Name == "metrics" {
+							p := c.Ports[i]
+							metricsPort = &p
+							break
+						}
+					}
+					require.NotNil(t, metricsPort, "%s must expose named port metrics", depName)
+					assert.Equal(t, int32(8080), metricsPort.ContainerPort,
+						"%s metrics port must be 8080 to match spark-operator-allow-metrics", depName)
+				}
 			})
 
 			t.Run("ControllerClusterRoleNetworkPolicyRBAC", func(t *testing.T) {

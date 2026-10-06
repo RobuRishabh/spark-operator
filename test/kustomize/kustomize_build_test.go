@@ -150,6 +150,7 @@ func TestKustomizeBuild(t *testing.T) {
 			"Service":                        1,
 			"MutatingWebhookConfiguration":   1,
 			"ValidatingWebhookConfiguration": 1,
+			"NetworkPolicy":                  0,
 		}
 		for kind, want := range expected {
 			t.Run(kind, func(t *testing.T) {

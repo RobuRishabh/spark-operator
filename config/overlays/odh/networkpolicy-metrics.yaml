@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: spark-operator-allow-metrics
+spec:
+  # Controller and webhook expose Prometheus on named port "metrics" (8080).
+  # User-workload Prometheus scrapes PodMonitors in this namespace; the
+  # namespace-wide NetworkPolicy only allows openshift-monitoring by name, so
+  # openshift-user-workload-monitoring scrapes hit context deadline exceeded
+  # and Thanos never sees spark_application_* series.
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: spark-operator
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - port: 8080
+          protocol: TCP
+      from:
+        # Covers openshift-monitoring and openshift-user-workload-monitoring.
+        - namespaceSelector:
+            matchLabels:
+              network.openshift.io/policy-group: monitoring
