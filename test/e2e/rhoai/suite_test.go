@@ -446,13 +446,9 @@ func runningOnOpenShift() bool {
 	return false
 }
 
-// ensureKindCompatibleOperatorIngress OR-allows all ingress to operator pods when
-// spark-operator-allow-metrics is present but there is no OpenShift namespace
-// deny-all. Without this, that NP is the first Ingress isolator and blocks
-// apiserver ProxyGet to :8080 (prometheus_metrics_test). On OpenShift the
-// platform deny-all already selects the pods, so the metrics NP only adds UWM
-// scrape and must stay as-is. A companion policy is used instead of deleting
-// the metrics NP so the module reconciler cannot recreate the KIND breakage.
+// ensureKindCompatibleOperatorIngress adds an allow-all ingress NP for operator
+// pods on non-OpenShift clusters so the metrics NP doesn't become the sole
+// Ingress isolator (which would block apiserver ProxyGet on KIND).
 func ensureKindCompatibleOperatorIngress(ctx context.Context) {
 	if runningOnOpenShift() {
 		return

@@ -215,17 +215,17 @@ func TestOverlayBuilds(t *testing.T) {
 				np := overlayConvertTo[networkingv1.NetworkPolicy](t, obj)
 				assert.Equal(t, overlay.namespace, np.Namespace)
 				assert.Equal(t, "true", np.Spec.PodSelector.MatchLabels["sparkoperator.k8s.io/launched-by-spark-operator"],
-					"spark-operator-allow-internal must keep selecting Spark job pods only")
+					"allow-internal must select Spark job pods")
 				assert.NotContains(t, np.Spec.PodSelector.MatchLabels, "app.kubernetes.io/name",
-					"spark-operator-allow-internal must not be retargeted at operator pods")
+					"allow-internal must not target operator pods")
 				ports := networkPolicyPorts(np)
 				assert.ElementsMatch(t, []int32{7078, 7079, 4040, 15002}, ports,
-					"spark-operator-allow-internal ports must stay Spark RPC/UI/Connect — do not add 8080 here")
+					"allow-internal ports must be Spark RPC/UI/Connect only")
 			})
 
 			t.Run("MetricsScrapeNetworkPolicy", func(t *testing.T) {
 				obj := overlayFindResource(resources, "NetworkPolicy", "spark-operator-allow-metrics")
-				require.NotNil(t, obj, "overlay %s must include spark-operator-allow-metrics so UWM can scrape :8080", overlay.name)
+				require.NotNil(t, obj, "overlay %s must include spark-operator-allow-metrics", overlay.name)
 				np := overlayConvertTo[networkingv1.NetworkPolicy](t, obj)
 				assert.Equal(t, overlay.namespace, np.Namespace)
 
@@ -243,13 +243,13 @@ func TestOverlayBuilds(t *testing.T) {
 				require.NotNil(t, rule.Ports[0].Protocol)
 				assert.Equal(t, corev1.ProtocolTCP, *rule.Ports[0].Protocol)
 
-				require.Len(t, rule.From, 1, "metrics NP must not open 8080 to extra peers")
+				require.Len(t, rule.From, 1, "metrics NP must have exactly one from clause")
 				from := rule.From[0]
 				assert.Nil(t, from.PodSelector, "do not allow all pods via empty podSelector")
 				require.NotNil(t, from.NamespaceSelector)
 				assert.Equal(t, map[string]string{"network.openshift.io/policy-group": "monitoring"},
 					from.NamespaceSelector.MatchLabels,
-					"8080 must be limited to OpenShift monitoring namespaces (cluster + user-workload)")
+					"8080 must be limited to monitoring namespaces")
 				assert.Empty(t, from.NamespaceSelector.MatchExpressions)
 			})
 
@@ -301,8 +301,7 @@ func TestOverlayBuilds(t *testing.T) {
 					}
 				}
 				assert.True(t, found,
-					"ClusterRole/spark-operator-controller must include networkpolicies RBAC — "+
-						"if this fails after an upstream sync, the overlay patch may need updating")
+					"ClusterRole/spark-operator-controller must include networkpolicies RBAC")
 			})
 		})
 	}

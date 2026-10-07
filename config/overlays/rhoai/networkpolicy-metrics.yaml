@@ -3,15 +3,7 @@ kind: NetworkPolicy
 metadata:
   name: spark-operator-allow-metrics
 spec:
-  # Controller and webhook expose Prometheus on named port "metrics" (8080).
-  # User-workload Prometheus scrapes PodMonitors in this namespace; the
-  # namespace-wide NetworkPolicy only allows openshift-monitoring by name, so
-  # openshift-user-workload-monitoring scrapes hit context deadline exceeded
-  # and Thanos never sees spark_application_* series.
-  #
-  # Assumes a platform namespace deny-all already selects these pods (OpenShift
-  # ODH/RHOAI). This policy only OR-adds UWM scrape; it must not be the first
-  # Ingress isolator (on KIND that blocks apiserver ProxyGet — see e2e suite).
+  # Allow monitoring namespaces (cluster + user-workload) to scrape :8080.
   podSelector:
     matchLabels:
       app.kubernetes.io/name: spark-operator
@@ -22,7 +14,6 @@ spec:
         - port: 8080
           protocol: TCP
       from:
-        # Covers openshift-monitoring and openshift-user-workload-monitoring.
         - namespaceSelector:
             matchLabels:
               network.openshift.io/policy-group: monitoring
