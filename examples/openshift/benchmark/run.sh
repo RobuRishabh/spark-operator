@@ -22,39 +22,61 @@ export SPARK_BENCH_INSECURE_SKIP_TLS_VERIFY="${SPARK_BENCH_INSECURE_SKIP_TLS_VER
 echo "==> Recording versions -> ${RESULTS_DIR}/versions.json"
 python3 "${HARNESS}/record_versions.py" "${RESULTS_DIR}/versions.json" || true
 
-echo "==> Re-applying webhook namespace selectors (module may have reverted them)"
+# The module owns the webhook objects and copies namespaceSelector from
+# spec.spark.jobNamespaces. Patching the webhook configuration directly does not stick.
+echo "==> Merging benchmark namespaces into SparkOperator spec.spark.jobNamespaces"
+current="$(oc get sparkoperator default-sparkoperator -o json | jq -c '.spec.spark.jobNamespaces // []')"
+merged="$(jq -nc --argjson current "${current}" --arg ns "${NAMESPACES}" '
+  ($ns | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0))) as $want
+  | ($current + $want) | unique
+')"
+patch="$(jq -nc --argjson namespaces "${merged}" '{spec: {spark: {jobNamespaces: $namespaces}}}')"
+oc patch sparkoperator default-sparkoperator --type=merge -p "${patch}" | tee "${RESULTS_DIR}/webhook-patch.log"
+echo "jobNamespaces: ${merged}" | tee -a "${RESULTS_DIR}/webhook-patch.log"
+
+echo "==> Waiting for webhook namespaceSelectors to include ${NAMESPACES}"
 PATCH_OK=false
-for attempt in 1 2 3 4 5; do
-  "${ROOT}/setup/patch-webhook-namespaces.sh" | tee -a "${RESULTS_DIR}/webhook-patch.log"
-  sleep 2
-  if oc get mutatingwebhookconfiguration mutating-webhook-configuration -o json | \
-    jq -e '
-      [.webhooks[]
-       | select(.name|test("mutate-sparkapplication|mutate-pod"))
-       | .namespaceSelector.matchExpressions[]?
-       | select(.key=="kubernetes.io/metadata.name")
-       | .values[]?]
-      | index("spark-bench-a") != null
-    ' >/dev/null; then
+IFS=',' read -r -a WANT_NAMESPACES <<< "${NAMESPACES}"
+for attempt in 1 2 3 4 5 6 7 8 9 10; do
+  selector_values="$(oc get mutatingwebhookconfiguration mutating-webhook-configuration -o json | jq -r '
+    [.webhooks[]
+     | select(.name | test("mutate-sparkapplication"))
+     | .namespaceSelector.matchExpressions[]?
+     | select(.key == "kubernetes.io/metadata.name")
+     | .values[]]
+    | unique
+    | .[]
+  ')"
+  missing=0
+  for ns in "${WANT_NAMESPACES[@]}"; do
+    ns="${ns#"${ns%%[![:space:]]*}"}"
+    ns="${ns%"${ns##*[![:space:]]}"}"
+    [[ -z "${ns}" ]] && continue
+    if ! grep -qx "${ns}" <<< "${selector_values}"; then
+      missing=1
+      break
+    fi
+  done
+  if [[ "${missing}" -eq 0 ]]; then
     PATCH_OK=true
     break
   fi
-  echo "Webhook selectors reverted (attempt ${attempt}/5); retrying patch..."
+  echo "Webhook selectors do not yet include all benchmark namespaces (attempt ${attempt}/10)..."
+  sleep 3
 done
 
-oc get mutatingwebhookconfiguration mutating-webhook-configuration -o json | \
-  jq -r '.webhooks[] | select(.name|test("sparkapplication|pod")) | "\(.name): \(.namespaceSelector)"' \
-  | tee "${RESULTS_DIR}/webhook-selectors.txt"
+oc get mutatingwebhookconfiguration mutating-webhook-configuration -o json |
+  jq -r '.webhooks[] | select(.name|test("sparkapplication|pod")) | "\(.name): \(.namespaceSelector)"' |
+  tee "${RESULTS_DIR}/webhook-selectors.txt"
 
 if [[ "${PATCH_OK}" != "true" ]]; then
   if [[ "${ALLOW_WEBHOOK_REVERT:-}" == "1" ]]; then
-    echo "WARNING: Spark Operator webhooks only cover 'default' (module reconcile)."
+    echo "WARNING: webhook namespaceSelectors do not include ${NAMESPACES}."
     echo "         Continuing because ALLOW_WEBHOOK_REVERT=1 — document as blocker."
   else
-    echo "ERROR: webhook namespace selectors do not retain spark-bench-* after patch." >&2
-    echo "       spark-operator-module reconciles them back to ['default'] only." >&2
-    echo "       Re-run with ALLOW_WEBHOOK_REVERT=1 to continue and record the blocker," >&2
-    echo "       or ask Platform how to configure webhook watched namespaces durably." >&2
+    echo "ERROR: webhook namespaceSelectors do not include ${NAMESPACES}." >&2
+    echo "       The module sets them from SparkOperator spec.spark.jobNamespaces." >&2
+    echo "       Re-run with ALLOW_WEBHOOK_REVERT=1 to continue and record the blocker." >&2
     exit 1
   fi
 fi
