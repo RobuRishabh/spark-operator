@@ -8,7 +8,7 @@ RUN_ID="${RUN_ID:-}"
 
 echo "==> Deleting SparkApplications"
 for ns in "${NAMESPACES[@]}"; do
-  if ! oc get ns "${ns}" >/dev/null 2>&1; then
+  if ! oc get ns "${ns}" > /dev/null 2>&1; then
     echo "Namespace ${ns} not found; skipping"
     continue
   fi

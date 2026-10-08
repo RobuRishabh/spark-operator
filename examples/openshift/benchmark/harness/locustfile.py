@@ -223,14 +223,9 @@ class SparkLoadTest(HttpUser):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # No custom handler here: locust already configures the root logger,
+        # and adding a second one made every line print twice.
         self.logger = logging.getLogger("spark_load_test")
-        self.logger.setLevel(logging.INFO)
-        if not self.logger.handlers:
-            handler = logging.StreamHandler()
-            handler.setFormatter(
-                logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-            )
-            self.logger.addHandler(handler)
 
         self.config = Configuration(self.environment)
         self.template_manager = TemplateManager(
@@ -342,7 +337,14 @@ def on_quitting(environment: env.Environment, **kwargs):
     output_dir = _get_output_dir(parsed)
     k8s = KubernetesClient()
 
-    logger.info("Collecting lifecycle timestamps for run %s", run_id)
+    submitted = len(collector.list_records())
+    logger.info(
+        "Load phase complete for run %s: %d SparkApplications submitted. "
+        "Next: wait for each app to run to completion so lifecycle timestamps "
+        "(start latency, time-to-terminal) can be exported.",
+        run_id,
+        submitted,
+    )
     watcher = LifecycleWatcher(
         k8s,
         collector,
