@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# Create benchmark namespaces, RBAC, and optionally extend Spark Operator
-# webhook namespace selectors to include the bench namespaces.
+# Create benchmark namespaces, RBAC, and anyuid for the spark ServiceAccount.
+# Webhook scope is set by run.sh via SparkOperator spec.spark.jobNamespaces.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NAMESPACES=("spark-bench-a" "spark-bench-b" "spark-bench-c")
-PATCH_WEBHOOKS="${PATCH_WEBHOOKS:-true}"
 
 echo "==> Applying namespaces"
 oc apply -f "${SCRIPT_DIR}/namespaces.yaml"
@@ -19,14 +18,6 @@ echo "==> Granting anyuid SCC to spark SA (apache/spark image requires UID 185)"
 for ns in "${NAMESPACES[@]}"; do
   oc adm policy add-scc-to-user anyuid -z spark -n "${ns}"
 done
-
-if [[ "${PATCH_WEBHOOKS}" == "true" ]]; then
-  echo "==> Extending Spark Operator webhook namespace selectors"
-  "${SCRIPT_DIR}/patch-webhook-namespaces.sh"
-else
-  echo "==> Skipping webhook patch (PATCH_WEBHOOKS=${PATCH_WEBHOOKS})"
-  echo "    NOTE: On this RHOAI cluster webhooks currently match only namespace 'default'."
-fi
 
 echo "==> Verify"
 for ns in "${NAMESPACES[@]}"; do

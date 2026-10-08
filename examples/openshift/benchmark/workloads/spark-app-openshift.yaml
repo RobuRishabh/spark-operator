@@ -54,8 +54,6 @@ spec:
       runAsUser: 185
       runAsGroup: 185
       runAsNonRoot: true
-      seccompProfile:
-        type: RuntimeDefault
   executor:
     instances: 5
     cores: 1
@@ -69,5 +67,3 @@ spec:
       runAsUser: 185
       runAsGroup: 185
       runAsNonRoot: true
-      seccompProfile:
-        type: RuntimeDefault

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import urllib.parse
 import urllib.request
@@ -28,6 +29,41 @@ def _oc(*args: str) -> str:
     return result.stdout.strip()
 
 
+def _env_truthy(name: str, default: str = "false") -> bool:
+    return os.environ.get(name, default).strip().lower() in {"1", "true", "yes", "y"}
+
+
+def _tls_context() -> ssl.SSLContext:
+    """Build a verified context for the Thanos querier route.
+
+    The route certificate is signed by the cluster's default ingress CA,
+    published in openshift-config-managed/default-ingress-cert and absent
+    from the host trust store (macOS Python ships no CA bundle), so trust
+    exactly that CA instead of disabling verification.
+    """
+    if _env_truthy("SPARK_BENCH_INSECURE_SKIP_TLS_VERIFY", "false"):
+        # Same opt-in escape hatch as harness/k8s_client.py, for setups
+        # where the CA bundle cannot be read.
+        context = ssl.create_default_context()
+        context.check_hostname = False  # tls-lint:ignore
+        context.verify_mode = ssl.CERT_NONE  # tls-lint:ignore
+        return context
+
+    ca_bundle = _oc(
+        "get", "configmap", "default-ingress-cert",
+        "-n", "openshift-config-managed",
+        "-o", "jsonpath={.data.ca-bundle\\.crt}",
+    )
+    if "BEGIN CERTIFICATE" not in ca_bundle:
+        raise RuntimeError(
+            "Could not read the cluster ingress CA bundle "
+            "(configmap/default-ingress-cert in openshift-config-managed); "
+            "cannot verify the Thanos querier route certificate. Re-run with "
+            "SPARK_BENCH_INSECURE_SKIP_TLS_VERIFY=true to skip verification."
+        )
+    return ssl.create_default_context(cadata=ca_bundle)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--queries", required=True)
@@ -42,7 +78,7 @@ def main() -> None:
     )
     token = _oc("whoami", "-t")
 
-    context = ssl._create_unverified_context()
+    context = _tls_context()
     results = []
     for item in catalog["queries"]:
         expr = item["expr"].strip()
