@@ -8,6 +8,7 @@ and JSON/CSV export.
 from __future__ import annotations
 
 import copy
+import json
 import logging
 import os
 import random
@@ -24,11 +25,13 @@ from locust import HttpUser, constant, env, events, task
 from export import export_results
 from k8s_client import BENCH_LABEL, RUN_ID_LABEL, KubernetesClient
 from lifecycle import LifecycleWatcher, ResultsCollector
+from safety import SafetyMonitor
 
 # Shared across Locust workers in a single process (headless local run).
 _RUN_ID: Optional[str] = None
 _COLLECTOR: Optional[ResultsCollector] = None
 _OUTPUT_DIR: Optional[Path] = None
+_SAFETY: Optional[SafetyMonitor] = None
 
 
 def _get_run_id(parsed) -> str:
@@ -90,6 +93,25 @@ class Configuration:
         for ns in self.namespaces:
             if not re.match(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", ns):
                 raise ValueError(f"Invalid namespace format: {ns}")
+
+
+@events.test_start.add_listener
+def on_test_start(environment, **kwargs):
+    global _SAFETY
+    enabled = os.environ.get("SPARK_BENCH_SAFETY_STOP", "true").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+    }
+    interval = float(os.environ.get("SPARK_BENCH_SAFETY_INTERVAL_SECONDS", "30"))
+
+    def _stop():
+        runner = getattr(environment, "runner", None)
+        if runner is not None:
+            runner.quit()
+
+    _SAFETY = SafetyMonitor(stop_fn=_stop, interval_seconds=interval, enabled=enabled)
+    _SAFETY.start()
 
 
 @events.init_command_line_parser.add_listener
@@ -330,12 +352,31 @@ class SparkLoadTest(HttpUser):
 
 @events.quitting.add_listener
 def on_quitting(environment: env.Environment, **kwargs):
+    global _SAFETY
     logger = logging.getLogger("post_run")
     parsed = environment.parsed_options
     run_id = _get_run_id(parsed)
     collector = _get_collector(parsed)
     output_dir = _get_output_dir(parsed)
     k8s = KubernetesClient()
+
+    if _SAFETY is not None:
+        _SAFETY.stop()
+        if _SAFETY.triggered_reason:
+            logger.error(
+                "Run stopped by safety monitor: %s", _SAFETY.triggered_reason
+            )
+            (output_dir / "safety-stop.json").write_text(
+                json.dumps(
+                    {
+                        "triggered": True,
+                        "reason": _SAFETY.triggered_reason,
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
 
     submitted = len(collector.list_records())
     logger.info(
@@ -359,6 +400,10 @@ def on_quitting(environment: env.Environment, **kwargs):
         "spark_template": parsed.spark_template,
         "spark_service_account": parsed.spark_service_account,
         "users": getattr(parsed, "num_users", None),
+        "jobs_max_failures": parsed.jobs_max_failures,
+        "safety_stop_enabled": os.environ.get("SPARK_BENCH_SAFETY_STOP", "true"),
+        "webhook_inventory": str(output_dir / "webhook-inventory.json"),
+        "capacity_snapshot": str(output_dir / "capacity.json"),
     }
     paths = export_results(
         records, output_dir=output_dir, run_id=run_id, run_parameters=run_parameters
