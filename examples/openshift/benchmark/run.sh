@@ -22,6 +22,44 @@ export SPARK_BENCH_INSECURE_SKIP_TLS_VERIFY="${SPARK_BENCH_INSECURE_SKIP_TLS_VER
 echo "==> Recording versions -> ${RESULTS_DIR}/versions.json"
 python3 "${HARNESS}/record_versions.py" "${RESULTS_DIR}/versions.json" || true
 
+echo "==> Webhook inventory -> ${RESULTS_DIR}/webhook-inventory.json"
+python3 "${HARNESS}/webhook_inventory.py" "${RESULTS_DIR}/webhook-inventory.json" || true
+
+echo "==> Capacity snapshot -> ${RESULTS_DIR}/capacity.json"
+python3 "${HARNESS}/capacity_snapshot.py" "${RESULTS_DIR}/capacity.json" "${NAMESPACES}" || true
+
+# Optional operator knobs (RHAIENG-7484). Empty means leave the live objects unchanged.
+# controllerResources is durable on SparkOperator CR. controller-threads is not a CR
+# field; patching the Deployment is best-effort and may be stomped on module reconcile.
+if [[ -n "${CONTROLLER_THREADS:-}" ]]; then
+  echo "==> Best-effort: set controller --controller-threads=${CONTROLLER_THREADS} on Deployment"
+  {
+    echo "CONTROLLER_THREADS=${CONTROLLER_THREADS}"
+    echo "NOTE: not on SparkOperator CR; module reconcile may restore the previous args."
+    oc get deploy spark-operator-controller -n redhat-ods-applications -o json |
+      jq --argjson t "${CONTROLLER_THREADS}" '
+        .spec.template.spec.containers[0].args |=
+          (map(if startswith("--controller-threads=")
+               then "--controller-threads=\($t|tostring)"
+               else . end))
+      ' | oc apply -f - 
+  } | tee -a "${RESULTS_DIR}/operator-patch.log" || true
+fi
+if [[ -n "${CONTROLLER_CPU_REQUEST:-}" || -n "${CONTROLLER_MEMORY_LIMIT:-}" ]]; then
+  cpu_req="${CONTROLLER_CPU_REQUEST:-500m}"
+  mem_lim="${CONTROLLER_MEMORY_LIMIT:-8Gi}"
+  mem_req="${CONTROLLER_MEMORY_REQUEST:-2Gi}"
+  cpu_lim="${CONTROLLER_CPU_LIMIT:-2}"
+  echo "==> Patching SparkOperator controllerResources (cpu=${cpu_req}/${cpu_lim}, mem=${mem_req}/${mem_lim})"
+  oc patch sparkoperator default-sparkoperator --type=merge -p "$(jq -nc \
+    --arg cpu_req "${cpu_req}" --arg cpu_lim "${cpu_lim}" \
+    --arg mem_req "${mem_req}" --arg mem_lim "${mem_lim}" \
+    '{spec:{spark:{controllerResources:{
+      requests:{cpu:$cpu_req,memory:$mem_req},
+      limits:{cpu:$cpu_lim,memory:$mem_lim}
+    }}}}')" | tee -a "${RESULTS_DIR}/operator-patch.log" || true
+fi
+
 # The module owns the webhook objects and copies namespaceSelector from
 # spec.spark.jobNamespaces. Patching the webhook configuration directly does not stick.
 echo "==> Merging benchmark namespaces into SparkOperator spec.spark.jobNamespaces"
