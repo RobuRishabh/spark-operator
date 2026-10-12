@@ -42,7 +42,7 @@ if [[ -n "${CONTROLLER_THREADS:-}" ]]; then
           (map(if startswith("--controller-threads=")
                then "--controller-threads=\($t|tostring)"
                else . end))
-      ' | oc apply -f - 
+      ' | oc apply -f -
   } | tee -a "${RESULTS_DIR}/operator-patch.log" || true
 fi
 if [[ -n "${CONTROLLER_CPU_REQUEST:-}" || -n "${CONTROLLER_MEMORY_LIMIT:-}" ]]; then
