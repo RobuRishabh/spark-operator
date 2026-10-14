@@ -151,5 +151,9 @@ locust --headless --only-summary \
   "${EXTRA_ARGS[@]}" \
   2>&1 | tee "${RESULTS_DIR}/run.log"
 
+# Refresh capacity.json after the run so SCC/NP event scans cover the load window.
+echo "==> Refreshing capacity snapshot (post-run admission events) -> ${RESULTS_DIR}/capacity.json"
+python3 "${HARNESS}/capacity_snapshot.py" "${RESULTS_DIR}/capacity.json" "${NAMESPACES}" || true
+
 echo "==> Results in ${RESULTS_DIR}"
 ls -la "${RESULTS_DIR}"

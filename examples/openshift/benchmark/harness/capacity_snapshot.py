@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Snapshot node pod limits, CPU, memory, pod IPs, ResourceQuota, namespace limits."""
+"""Snapshot node pod limits, CPU, memory, pod IPs, ResourceQuota, namespace limits, admission observations (SCC / NetworkPolicy
+event hits, or explicit \"none observed\").
+"""
 
 from __future__ import annotations
 
@@ -44,6 +46,26 @@ def _ki_to_mi(value: str) -> Optional[float]:
         return round(int(value) / (1024 * 1024), 1)
     except ValueError:
         return None
+
+def _event_hits(
+    namespaces: list[str], substrings: list[str], limit: int = 10
+) -> dict[str, Any]:
+    """Scan recent namespace events; return status + samples for ticket ACs."""
+    samples: list[str] = []
+    for ns in namespaces:
+        data = _oc_json("get", "events", "-n", ns)
+        if not data:
+            continue
+        items = list(reversed(data.get("items") or []))
+        for item in items:
+            blob = f"{item.get('reason') or ''}: {item.get('message') or ''}"
+            if any(s.lower() in blob.lower() for s in substrings):
+                samples.append(f"[{ns}] {blob}")
+                if len(samples) >= limit:
+                    return {"status": "observed", "samples": samples}
+    if samples:
+        return {"status": "observed", "samples": samples}
+    return {"status": "none observed", "samples": []}
 
 
 def collect(namespaces: list[str]) -> dict[str, Any]:
@@ -145,6 +167,18 @@ def collect(namespaces: list[str]) -> dict[str, Any]:
             "pods_per_application": 6,
             "note": "applications × (1 driver + 5 executors); see RHAIENG-7483-capacity-note.md",
         },
+        "scc_admission_failures": _event_hits(
+            namespaces,
+            [
+                "SCC",
+                "violates PodSecurity",
+                "unable to validate against any security",
+            ],
+        ),
+        "networkpolicy_related_failures": _event_hits(
+            namespaces,
+            ["NetworkPolicy", "network policy", "blocked by network"],
+        ),
     }
 
 
