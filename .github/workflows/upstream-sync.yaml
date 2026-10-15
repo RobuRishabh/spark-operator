@@ -76,10 +76,10 @@ jobs:
           if git remote get-url upstream >/dev/null 2>&1; then
             CURRENT_URL=$(git remote get-url upstream)
             if [[ "$CURRENT_URL" != "$UPSTREAM_REPO" ]]; then
-              echo "Error: upstream remote points to '$CURRENT_URL', expected '$UPSTREAM_REPO'"
+              echo "Error: Upstream remote mismatch detected"
               exit 1
             fi
-            echo "Upstream remote verified: $CURRENT_URL"
+            echo "Upstream remote verified"
           else
             echo "Adding upstream remote: $UPSTREAM_REPO"
             git remote add upstream "$UPSTREAM_REPO"
@@ -103,44 +103,16 @@ jobs:
         if: steps.check-sync.outputs.sync_needed == 'true'
         id: branch
         run: |
-          SYNC_DATE=$(date +%Y-%m-%d)
-          BRANCH_NAME="upstream-sync-${SYNC_DATE}"
+          TIMESTAMP=$(date +%Y-%m-%d-%H%M)
+          BRANCH_NAME="upstream-sync-${TIMESTAMP}"
           echo "branch_name=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
-          echo "sync_date=$SYNC_DATE" >> "$GITHUB_OUTPUT"
+          echo "timestamp=$TIMESTAMP" >> "$GITHUB_OUTPUT"
 
-          # Check if branch already exists on remote (idempotency check)
-          if git ls-remote --heads origin "$BRANCH_NAME" | grep -q "$BRANCH_NAME"; then
-            echo "Branch $BRANCH_NAME already exists on remote"
-
-            # Check if there's an existing open PR for this branch
-            EXISTING_PR=$(gh pr list --repo ${{ github.repository }} --head "$BRANCH_NAME" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
-
-            if [ -n "$EXISTING_PR" ]; then
-              echo "Open PR #$EXISTING_PR already exists for branch $BRANCH_NAME"
-              echo "Sync already in progress. Exiting early."
-              echo "branch_exists=true" >> "$GITHUB_OUTPUT"
-              echo "pr_number=$EXISTING_PR" >> "$GITHUB_OUTPUT"
-              exit 0
-            else
-              echo "Error: Branch $BRANCH_NAME exists but no open PR found."
-              echo "This may indicate a previous failed run. Please investigate and clean up manually."
-              exit 1
-            fi
-          fi
-
-          echo "branch_exists=false" >> "$GITHUB_OUTPUT"
-
-          # Ensure we're on a clean main
-          git checkout -B main origin/main
-          git reset --hard origin/main
-
-          # Create sync branch
+          # Create sync branch (timestamp ensures uniqueness)
           git checkout -b "$BRANCH_NAME"
 
       - name: Merge upstream changes
-        if: |
-          steps.check-sync.outputs.sync_needed == 'true' &&
-          steps.branch.outputs.branch_exists != 'true'
+        if: steps.check-sync.outputs.sync_needed == 'true'
         id: merge
         env:
           CONFLICT_RESOLUTION_INPUT: ${{ github.event.inputs.conflict_resolution || 'theirs' }}
@@ -173,7 +145,6 @@ jobs:
       - name: Push sync branch
         if: |
           steps.check-sync.outputs.sync_needed == 'true' &&
-          steps.branch.outputs.branch_exists != 'true' &&
           steps.merge.outputs.merge_status == 'success'
         run: |
           git push origin "${{ steps.branch.outputs.branch_name }}"
@@ -181,7 +152,6 @@ jobs:
       - name: Create Pull Request
         if: |
           steps.check-sync.outputs.sync_needed == 'true' &&
-          steps.branch.outputs.branch_exists != 'true' &&
           steps.merge.outputs.merge_status == 'success' &&
           (github.event.inputs.create_pr != 'false')
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.0.1
@@ -193,7 +163,7 @@ jobs:
             const { data: pr } = await github.rest.pulls.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              title: 'Upstream sync ${{ steps.branch.outputs.sync_date }}',
+              title: 'Upstream sync ${{ steps.branch.outputs.timestamp }}',
               head: '${{ steps.branch.outputs.branch_name }}',
               base: 'main',
               body: `## Automated Upstream Sync
