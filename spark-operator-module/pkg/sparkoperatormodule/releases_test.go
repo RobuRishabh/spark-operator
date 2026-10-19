@@ -2,6 +2,8 @@ package sparkoperatormodule
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -90,6 +92,8 @@ func TestSetPlatformRelease(t *testing.T) {
 func TestSetReleaseStatusMergesWithPlatformRelease(t *testing.T) {
 	t.Parallel()
 
+	// Status left with only the platform entry, as happens when the first
+	// healthy reconcile failed to load component metadata.
 	instance := &platformv1alpha1.SparkOperator{
 		Status: platformv1alpha1.SparkOperatorStatus{
 			ComponentReleaseStatus: common.ComponentReleaseStatus{Releases: []common.ComponentRelease{
@@ -97,17 +101,51 @@ func TestSetReleaseStatusMergesWithPlatformRelease(t *testing.T) {
 			}},
 		},
 	}
-	r := &SparkOperatorModuleReconciler{ManifestsTemplatePath: t.TempDir()}
+
+	manifestsPath := t.TempDir()
+	metadata := `releases:
+  - name: Spark Operator
+    version: v2.4.0
+  - name: Spark
+    version: 4.0.1
+`
+	if err := os.MkdirAll(filepath.Join(manifestsPath, SparkOperatorComponentName, "config"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(manifestsPath, SparkOperatorComponentName, "config", "component_metadata.yaml"),
+		[]byte(metadata), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := &SparkOperatorModuleReconciler{ManifestsTemplatePath: manifestsPath}
 
 	r.setReleaseStatus(instance)
 
-	if len(instance.Status.Releases) != 2 {
-		t.Fatalf("setReleaseStatus() produced %d releases, want 2", len(instance.Status.Releases))
+	if len(instance.Status.Releases) != 3 {
+		t.Fatalf("setReleaseStatus() produced %d releases, want 3", len(instance.Status.Releases))
 	}
 	if got := instance.Status.Releases[0].Version; got != "2.20.0" {
 		t.Fatalf("setReleaseStatus() changed platform release to %q", got)
 	}
-	if got := instance.Status.Releases[1].Name; got != fallbackReleases[0].Name {
-		t.Fatalf("setReleaseStatus() component release = %q, want %q", got, fallbackReleases[0].Name)
+	for _, want := range []struct{ name, version string }{
+		{"Spark Operator", "v2.4.0"},
+		{"Spark", "4.0.1"},
+	} {
+		rel := findReleaseByName(instance, want.name)
+		if rel == nil {
+			t.Fatalf("setReleaseStatus() did not populate release %q", want.name)
+		}
+		if rel.Version != want.version {
+			t.Fatalf("setReleaseStatus() release %q version = %q, want %q", want.name, rel.Version, want.version)
+		}
 	}
+}
+
+func findReleaseByName(cr *platformv1alpha1.SparkOperator, name string) *common.ComponentRelease {
+	for i := range cr.Status.Releases {
+		if cr.Status.Releases[i].Name == name {
+			return &cr.Status.Releases[i]
+		}
+	}
+	return nil
 }
