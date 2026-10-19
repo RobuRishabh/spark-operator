@@ -64,6 +64,45 @@ var _ = Describe("SparkOperatorModule Reconciler", func() {
 		}).WithContext(ctx).Should(Succeed())
 	})
 
+	It("reconciles operands but withholds the handshake when platform config is missing", func(ctx SpecContext) {
+		config := &corev1.ConfigMap{}
+		configKey := client.ObjectKey{Name: fixture.TestPlatformConfigMapName, Namespace: "opendatahub"}
+		Expect(testEnv.Client.Get(ctx, configKey, config)).To(Succeed())
+		Expect(testEnv.Client.Delete(ctx, config)).To(Succeed())
+		DeferCleanup(func(ctx SpecContext) {
+			Expect(testEnv.Client.Create(ctx, &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: fixture.TestPlatformConfigMapName, Namespace: "opendatahub"},
+				Data:       map[string]string{fixture.TestPlatformVersionKey: fixture.TestPlatformVersion},
+			})).To(Succeed())
+		})
+
+		fixture.CreateReadyDeployment(ctx, testEnv.Client, "spark-operator-controller", "opendatahub")
+		fixture.CreateReadyDeployment(ctx, testEnv.Client, "spark-operator-webhook", "opendatahub")
+		DeferCleanup(func(ctx SpecContext) {
+			Expect(client.IgnoreNotFound(testEnv.Client.Delete(ctx,
+				fixture.ReadyDeployment("spark-operator-controller", "opendatahub")))).To(Succeed())
+			Expect(client.IgnoreNotFound(testEnv.Client.Delete(ctx,
+				fixture.ReadyDeployment("spark-operator-webhook", "opendatahub")))).To(Succeed())
+		})
+
+		testEnv.Deployer.Reset()
+		cr := fixture.SparkOperatorCR()
+		Expect(testEnv.Client.Create(ctx, cr)).To(Succeed())
+		DeferCleanup(func(ctx SpecContext) {
+			Expect(client.IgnoreNotFound(testEnv.Client.Delete(ctx, cr))).To(Succeed())
+		})
+
+		Eventually(func(g Gomega) {
+			g.Expect(testEnv.Deployer.LastCall()).NotTo(BeNil())
+			g.Expect(testEnv.Client.Get(ctx, client.ObjectKeyFromObject(cr), cr)).To(Succeed())
+			provisioning := fixture.FindCondition(cr, string(common.ConditionTypeProvisioningSucceeded))
+			g.Expect(provisioning).NotTo(BeNil())
+			g.Expect(provisioning.Status).To(Equal(metav1.ConditionFalse))
+			g.Expect(cr.Status.Phase).To(Equal(common.PhaseNotReady))
+			g.Expect(fixture.FindRelease(cr, fixture.TestPlatformReleaseName)).To(BeNil())
+		}).WithContext(ctx).Should(Succeed())
+	})
+
 	Context("reconcile lifecycle", Ordered, func() {
 		var cr *platformv1alpha1.SparkOperator
 
