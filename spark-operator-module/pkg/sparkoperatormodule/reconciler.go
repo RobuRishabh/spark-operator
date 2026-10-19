@@ -18,6 +18,7 @@ import (
 
 	"github.com/opendatahub-io/odh-platform-utilities/api/common"
 	"github.com/opendatahub-io/odh-platform-utilities/pkg/cluster"
+	"github.com/opendatahub-io/odh-platform-utilities/pkg/controller/conditions"
 	"github.com/opendatahub-io/odh-platform-utilities/pkg/deploy"
 
 	platformv1alpha1 "github.com/opendatahub-io/spark-operator-module/pkg/apis/v1alpha1"
@@ -105,7 +106,9 @@ func (r *SparkOperatorModuleReconciler) Reconcile(ctx context.Context, req ctrl.
 
 	platformVersion, err := r.getPlatformVersion(ctx)
 	if err != nil {
-		applyProvisioningCondition(condMgr, map[string]error{"platform-version": err})
+		condMgr.MarkFalse(string(common.ConditionTypeProvisioningSucceeded),
+			conditions.WithReason("PlatformVersionUnavailable"),
+			conditions.WithMessage("%s", err.Error()))
 		return ctrl.Result{}, err
 	}
 

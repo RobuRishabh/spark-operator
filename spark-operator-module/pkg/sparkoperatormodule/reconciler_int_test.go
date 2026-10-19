@@ -3,7 +3,6 @@ package sparkoperatormodule_test
 import (
 	"context"
 	"testing"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -12,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/opendatahub-io/odh-platform-utilities/api/common"
@@ -98,6 +98,7 @@ var _ = Describe("SparkOperatorModule Reconciler", func() {
 			provisioning := fixture.FindCondition(cr, string(common.ConditionTypeProvisioningSucceeded))
 			g.Expect(provisioning).NotTo(BeNil())
 			g.Expect(provisioning.Status).To(Equal(metav1.ConditionFalse))
+			g.Expect(provisioning.Reason).To(Equal("PlatformVersionUnavailable"))
 			g.Expect(cr.Status.Phase).To(Equal(common.PhaseNotReady))
 			g.Expect(fixture.FindRelease(cr, fixture.TestPlatformReleaseName)).To(BeNil())
 		}).WithContext(ctx).Should(Succeed())
@@ -345,16 +346,14 @@ var _ = Describe("SparkOperatorModule Reconciler", func() {
 			key := client.ObjectKey{Name: fixture.TestPlatformConfigMapName, Namespace: "opendatahub"}
 			Expect(testEnv.Client.Get(ctx, key, config)).To(Succeed())
 			config.Data[fixture.TestPlatformVersionKey] = "2.22.0"
-			testEnv.Deployer.Reset()
 			Expect(testEnv.Client.Update(ctx, config)).To(Succeed())
-			Eventually(testEnv.Deployer.LastCall).WithContext(ctx).ShouldNot(BeNil())
+			_, err := testEnv.Reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(cr)})
+			Expect(err).NotTo(HaveOccurred())
 
-			Consistently(func(g Gomega) {
-				g.Expect(testEnv.Client.Get(ctx, client.ObjectKeyFromObject(cr), cr)).To(Succeed())
-				platformRelease := fixture.FindRelease(cr, fixture.TestPlatformReleaseName)
-				g.Expect(platformRelease).NotTo(BeNil())
-				g.Expect(platformRelease.Version).To(Equal("2.21.0"))
-			}).WithContext(ctx).WithTimeout(time.Second).Should(Succeed())
+			Expect(testEnv.Client.Get(ctx, client.ObjectKeyFromObject(cr), cr)).To(Succeed())
+			platformRelease := fixture.FindRelease(cr, fixture.TestPlatformReleaseName)
+			Expect(platformRelease).NotTo(BeNil())
+			Expect(platformRelease.Version).To(Equal("2.21.0"))
 		})
 
 		It("recovers to Ready when deployment is restored", func(ctx SpecContext) {

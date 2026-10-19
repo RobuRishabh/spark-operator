@@ -86,3 +86,28 @@ func TestSetPlatformRelease(t *testing.T) {
 		t.Fatalf("setPlatformRelease() changed component release to %q", got)
 	}
 }
+
+func TestSetReleaseStatusMergesWithPlatformRelease(t *testing.T) {
+	t.Parallel()
+
+	instance := &platformv1alpha1.SparkOperator{
+		Status: platformv1alpha1.SparkOperatorStatus{
+			ComponentReleaseStatus: common.ComponentReleaseStatus{Releases: []common.ComponentRelease{
+				{Name: platformReleaseName, Version: "2.20.0"},
+			}},
+		},
+	}
+	r := &SparkOperatorModuleReconciler{ManifestsTemplatePath: t.TempDir()}
+
+	r.setReleaseStatus(instance)
+
+	if len(instance.Status.Releases) != 2 {
+		t.Fatalf("setReleaseStatus() produced %d releases, want 2", len(instance.Status.Releases))
+	}
+	if got := instance.Status.Releases[0].Version; got != "2.20.0" {
+		t.Fatalf("setReleaseStatus() changed platform release to %q", got)
+	}
+	if got := instance.Status.Releases[1].Name; got != fallbackReleases[0].Name {
+		t.Fatalf("setReleaseStatus() component release = %q, want %q", got, fallbackReleases[0].Name)
+	}
+}
