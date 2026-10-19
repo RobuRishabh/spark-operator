@@ -3,6 +3,7 @@ package sparkoperatormodule_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -251,9 +252,29 @@ var _ = Describe("SparkOperatorModule Reconciler", func() {
 				g.Expect(testEnv.Client.Get(ctx, client.ObjectKeyFromObject(cr), cr)).To(Succeed())
 				g.Expect(cr.Status.Phase).To(Equal(common.PhaseReady))
 				g.Expect(cr.Status.ObservedGeneration).To(Equal(cr.Generation))
-				g.Expect(cr.Status.Releases).NotTo(BeEmpty())
-				g.Expect(cr.Status.Releases[0].Name).To(Equal(fixture.TestReleaseName))
-				g.Expect(cr.Status.Releases[0].Version).To(Equal(fixture.TestReleaseVersion))
+
+				componentRelease := fixture.FindRelease(cr, fixture.TestReleaseName)
+				g.Expect(componentRelease).NotTo(BeNil())
+				g.Expect(componentRelease.Version).To(Equal(fixture.TestReleaseVersion))
+
+				platformRelease := fixture.FindRelease(cr, fixture.TestPlatformReleaseName)
+				g.Expect(platformRelease).NotTo(BeNil())
+				g.Expect(platformRelease.Version).To(Equal(fixture.TestPlatformVersion))
+			}).WithContext(ctx).Should(Succeed())
+		})
+
+		It("updates the platform release when the platform ConfigMap changes", func(ctx SpecContext) {
+			config := &corev1.ConfigMap{}
+			key := client.ObjectKey{Name: fixture.TestPlatformConfigMapName, Namespace: "opendatahub"}
+			Expect(testEnv.Client.Get(ctx, key, config)).To(Succeed())
+			config.Data[fixture.TestPlatformVersionKey] = "2.21.0"
+			Expect(testEnv.Client.Update(ctx, config)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				g.Expect(testEnv.Client.Get(ctx, client.ObjectKeyFromObject(cr), cr)).To(Succeed())
+				platformRelease := fixture.FindRelease(cr, fixture.TestPlatformReleaseName)
+				g.Expect(platformRelease).NotTo(BeNil())
+				g.Expect(platformRelease.Version).To(Equal("2.21.0"))
 			}).WithContext(ctx).Should(Succeed())
 		})
 
@@ -280,6 +301,21 @@ var _ = Describe("SparkOperatorModule Reconciler", func() {
 
 				g.Expect(cr.Status.Phase).To(Equal(common.PhaseNotReady))
 			}).WithContext(ctx).Should(Succeed())
+
+			config := &corev1.ConfigMap{}
+			key := client.ObjectKey{Name: fixture.TestPlatformConfigMapName, Namespace: "opendatahub"}
+			Expect(testEnv.Client.Get(ctx, key, config)).To(Succeed())
+			config.Data[fixture.TestPlatformVersionKey] = "2.22.0"
+			testEnv.Deployer.Reset()
+			Expect(testEnv.Client.Update(ctx, config)).To(Succeed())
+			Eventually(testEnv.Deployer.LastCall).WithContext(ctx).ShouldNot(BeNil())
+
+			Consistently(func(g Gomega) {
+				g.Expect(testEnv.Client.Get(ctx, client.ObjectKeyFromObject(cr), cr)).To(Succeed())
+				platformRelease := fixture.FindRelease(cr, fixture.TestPlatformReleaseName)
+				g.Expect(platformRelease).NotTo(BeNil())
+				g.Expect(platformRelease.Version).To(Equal("2.21.0"))
+			}).WithContext(ctx).WithTimeout(time.Second).Should(Succeed())
 		})
 
 		It("recovers to Ready when deployment is restored", func(ctx SpecContext) {
@@ -293,6 +329,10 @@ var _ = Describe("SparkOperatorModule Reconciler", func() {
 				sparkReady := fixture.FindCondition(cr, sparkoperatormodule.ConditionSparkOperatorReady)
 				g.Expect(sparkReady).NotTo(BeNil())
 				g.Expect(sparkReady.Status).To(Equal(metav1.ConditionTrue))
+
+				platformRelease := fixture.FindRelease(cr, fixture.TestPlatformReleaseName)
+				g.Expect(platformRelease).NotTo(BeNil())
+				g.Expect(platformRelease.Version).To(Equal("2.22.0"))
 			}).WithContext(ctx).Should(Succeed())
 		})
 

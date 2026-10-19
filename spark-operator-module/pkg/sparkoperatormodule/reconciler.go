@@ -85,6 +85,12 @@ func (r *SparkOperatorModuleReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, nil
 	}
 
+	platformVersion, err := r.getPlatformVersion(ctx)
+	if err != nil {
+		applyProvisioningCondition(condMgr, map[string]error{"platform-version": err})
+		return ctrl.Result{}, err
+	}
+
 	componentErrors := r.reconcile(ctx, sparkOperator)
 	applyProvisioningCondition(condMgr, componentErrors)
 	if len(componentErrors) > 0 {
@@ -103,6 +109,9 @@ func (r *SparkOperatorModuleReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
 	}
 
+	// Future upgrade work must complete above this line so failures retain the previous platform version.
+	r.setReleaseStatus(sparkOperator)
+	setPlatformRelease(sparkOperator, platformVersion)
 	return ctrl.Result{}, nil
 }
 
