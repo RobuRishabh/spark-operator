@@ -20,8 +20,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -95,6 +98,46 @@ func networkPolicyPorts(np *networkingv1.NetworkPolicy) []int32 {
 		}
 	}
 	return ports
+}
+
+// requiredOverlayResources lists every resource kind+name that the
+// opendatahub-operator (via spark-operator-module) depends on. Adding or
+// renaming a resource requires updating this list.
+var requiredOverlayResources = []struct {
+	Kind string
+	Name string
+}{
+	{"CustomResourceDefinition", "sparkapplications.sparkoperator.k8s.io"},
+	{"CustomResourceDefinition", "scheduledsparkapplications.sparkoperator.k8s.io"},
+	{"CustomResourceDefinition", "sparkconnects.sparkoperator.k8s.io"},
+	{"ServiceAccount", "spark-operator-controller"},
+	{"ServiceAccount", "spark-operator-webhook"},
+	{"Deployment", "spark-operator-controller"},
+	{"Deployment", "spark-operator-webhook"},
+	{"ClusterRole", "spark-operator-controller"},
+	{"ClusterRole", "spark-operator-webhook"},
+	{"ClusterRoleBinding", "spark-operator-controller"},
+	{"ClusterRoleBinding", "spark-operator-webhook"},
+	{"Role", "spark-operator-controller"},
+	{"Role", "spark-operator-webhook"},
+	{"RoleBinding", "spark-operator-controller"},
+	{"RoleBinding", "spark-operator-webhook"},
+	{"Service", "spark-operator-webhook-svc"},
+	{"MutatingWebhookConfiguration", "mutating-webhook-configuration"},
+	{"ValidatingWebhookConfiguration", "validating-webhook-configuration"},
+}
+
+// namespacedKinds lists resource kinds that must carry a namespace in the
+// rendered output. Cluster-scoped kinds are excluded.
+var namespacedKinds = map[string]bool{
+	"ConfigMap":      true,
+	"Deployment":     true,
+	"NetworkPolicy":  true,
+	"PodMonitor":     true,
+	"Role":           true,
+	"RoleBinding":    true,
+	"Service":        true,
+	"ServiceAccount": true,
 }
 
 // TestOverlayBuilds validates that both ODH and RHOAI overlays build
@@ -380,6 +423,149 @@ func TestOverlayBuilds(t *testing.T) {
 				assert.True(t, found,
 					"ClusterRole/spark-operator-controller must include networkpolicies RBAC")
 			})
+
+			// --- Inter-dependency contract assertions (RHOAIENG-96585) ---
+
+			t.Run("RequiredResourcesContract", func(t *testing.T) {
+				for _, req := range requiredOverlayResources {
+					obj := overlayFindResource(resources, req.Kind, req.Name)
+					assert.NotNilf(t, obj,
+						"required resource %s/%s not found in %s overlay",
+						req.Kind, req.Name, overlay.name)
+				}
+			})
+
+			t.Run("NamespacedResourcesMustCarryNamespace", func(t *testing.T) {
+				for _, r := range resources {
+					if !namespacedKinds[r.GetKind()] {
+						continue
+					}
+					assert.Equal(t, overlay.namespace, r.GetNamespace(),
+						"%s/%s must have namespace %q, got %q",
+						r.GetKind(), r.GetName(), overlay.namespace, r.GetNamespace())
+				}
+			})
+
+			t.Run("ImagePlaceholdersSubstituted", func(t *testing.T) {
+				for _, depName := range []string{"spark-operator-controller", "spark-operator-webhook"} {
+					depObj := overlayFindResource(resources, "Deployment", depName)
+					require.NotNil(t, depObj)
+					dep := overlayConvertTo[appsv1.Deployment](t, depObj)
+					for _, c := range dep.Spec.Template.Spec.Containers {
+						assert.NotContains(t, c.Image, "$(",
+							"Deployment %s container %s still has unsubstituted placeholder",
+							depName, c.Name)
+					}
+				}
+			})
+
+			t.Run("WebhookServiceRefs", func(t *testing.T) {
+				for _, whName := range []string{"mutating-webhook-configuration", "validating-webhook-configuration"} {
+					obj := overlayFindResource(resources, whichWebhookKind(whName), whName)
+					require.NotNilf(t, obj, "%s not found", whName)
+
+					entries, _, _ := unstructured.NestedSlice(obj.Object, "webhooks")
+					require.NotEmpty(t, entries, "%s has no webhook entries", whName)
+
+					for _, entry := range entries {
+						m, ok := entry.(map[string]interface{})
+						require.True(t, ok)
+						svcName, _, _ := unstructured.NestedString(m, "clientConfig", "service", "name")
+						svcNs, _, _ := unstructured.NestedString(m, "clientConfig", "service", "namespace")
+						assert.Equal(t, "spark-operator-webhook-svc", svcName,
+							"%s webhook should reference spark-operator-webhook-svc", whName)
+						assert.Equal(t, overlay.namespace, svcNs,
+							"%s webhook service namespace should be %s", whName, overlay.namespace)
+					}
+				}
+			})
+
+			t.Run("StandardPodLabels", func(t *testing.T) {
+				for _, name := range []string{"spark-operator-controller", "spark-operator-webhook"} {
+					obj := overlayFindResource(resources, "Deployment", name)
+					require.NotNilf(t, obj, "Deployment %s not found", name)
+					dep := overlayConvertTo[appsv1.Deployment](t, obj)
+					podLabels := dep.Spec.Template.Labels
+
+					assert.Equal(t, "spark-operator", podLabels["app.kubernetes.io/name"],
+						"Deployment %s pod template must have app.kubernetes.io/name=spark-operator", name)
+					assert.NotEmpty(t, podLabels["app.kubernetes.io/component"],
+						"Deployment %s pod template must have app.kubernetes.io/component", name)
+				}
+			})
+
+			t.Run("PartOfLabel", func(t *testing.T) {
+				expectedPartOf := map[string]string{
+					"odh":   "opendatahub",
+					"rhoai": "rhoai",
+				}[overlay.name]
+
+				obj := overlayFindResource(resources, "Deployment", "spark-operator-controller")
+				require.NotNil(t, obj)
+				assert.Equal(t, expectedPartOf, obj.GetLabels()["app.kubernetes.io/part-of"],
+					"overlay %s should have app.kubernetes.io/part-of=%s",
+					overlay.name, expectedPartOf)
+			})
 		})
+	}
+}
+
+func whichWebhookKind(name string) string {
+	if strings.HasPrefix(name, "mutating") {
+		return "MutatingWebhookConfiguration"
+	}
+	return "ValidatingWebhookConfiguration"
+}
+
+// TestParamsEnvConsistency validates that all params.env files declare the
+// same set of keys. This catches cases where a new variable is added to one
+// overlay but not the others.
+func TestParamsEnvConsistency(t *testing.T) {
+	repoRoot := filepath.Join("..", "..")
+	envFiles := []struct {
+		name string
+		path string
+	}{
+		{"default", filepath.Join(repoRoot, "config", "default", "params.env")},
+		{"odh", filepath.Join(repoRoot, "config", "overlays", "odh", "params.env")},
+		{"rhoai", filepath.Join(repoRoot, "config", "overlays", "rhoai", "params.env")},
+	}
+
+	keysByFile := make(map[string][]string)
+	for _, ef := range envFiles {
+		data, err := os.ReadFile(ef.path)
+		require.NoError(t, err, "failed to read %s", ef.path)
+
+		var keys []string
+		for _, line := range strings.Split(string(data), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) == 2 {
+				keys = append(keys, parts[0])
+			}
+		}
+		sort.Strings(keys)
+		keysByFile[ef.name] = keys
+	}
+
+	defaultKeys := keysByFile["default"]
+	for _, ef := range envFiles[1:] {
+		assert.Equal(t, defaultKeys, keysByFile[ef.name],
+			"params.env keys differ between default and %s", ef.name)
+	}
+
+	requiredKeys := []string{
+		"RELATED_IMAGE_ODH_SPARK_OPERATOR_IMAGE",
+		"SPARK_OPERATOR_CONTROLLER_IMAGE",
+		"SPARK_OPERATOR_WEBHOOK_IMAGE",
+	}
+	for _, ef := range envFiles {
+		for _, key := range requiredKeys {
+			assert.Contains(t, keysByFile[ef.name], key,
+				"%s params.env is missing required key %s", ef.name, key)
+		}
 	}
 }
