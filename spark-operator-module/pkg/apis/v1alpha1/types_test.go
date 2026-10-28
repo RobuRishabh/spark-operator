@@ -105,6 +105,49 @@ func TestResolveControllerResources_UsesConfigured(t *testing.T) {
 	g.Expect(got).To(Equal(rr))
 }
 
+func TestResolveControllerConfiguration_NilWhenUnset(t *testing.T) {
+	g := NewWithT(t)
+
+	g.Expect(ResolveControllerConfiguration(nil)).To(BeNil())
+	g.Expect(ResolveControllerConfiguration(&SparkOperator{})).To(BeNil())
+	g.Expect(ResolveControllerConfiguration(&SparkOperator{
+		Spec: SparkOperatorSpec{Spark: &SparkSpec{}},
+	})).To(BeNil())
+	g.Expect(ResolveControllerConfiguration(&SparkOperator{
+		Spec: SparkOperatorSpec{Spark: &SparkSpec{ControllerConfiguration: &ControllerConfiguration{}}},
+	})).To(BeNil())
+	g.Expect(ResolveControllerConfiguration(&SparkOperator{
+		Spec: SparkOperatorSpec{Spark: &SparkSpec{ControllerConfiguration: &ControllerConfiguration{
+			WorkqueueRateLimiter: &WorkqueueRateLimiterConfiguration{},
+		}}},
+	})).To(BeNil())
+}
+
+func TestResolveControllerConfiguration_UsesConfigured(t *testing.T) {
+	g := NewWithT(t)
+	workers := int32(20)
+	qps := int32(50)
+	burst := int32(500)
+	maxDelay := "6h"
+	kubeQPS := int32(20)
+	kubeBurst := int32(30)
+	configuration := &ControllerConfiguration{
+		Workers: &workers,
+		WorkqueueRateLimiter: &WorkqueueRateLimiterConfiguration{
+			BucketQPS:  &qps,
+			BucketSize: &burst,
+			MaxDelay:   &maxDelay,
+		},
+		KubeAPIQPS:   &kubeQPS,
+		KubeAPIBurst: &kubeBurst,
+	}
+
+	got := ResolveControllerConfiguration(&SparkOperator{
+		Spec: SparkOperatorSpec{Spark: &SparkSpec{ControllerConfiguration: configuration}},
+	})
+	g.Expect(got).To(Equal(configuration))
+}
+
 func TestSparkOperatorAccessors(t *testing.T) {
 	g := NewWithT(t)
 
