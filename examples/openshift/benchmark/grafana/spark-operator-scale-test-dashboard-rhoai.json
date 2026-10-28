@@ -19,7 +19,7 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
-  "id": 1,
+  "id": null,
   "links": [],
   "panels": [
     {
@@ -121,7 +121,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "dg0qeak3l5clcf"
+            "uid": "${DATA_SOURCE}"
           },
           "editorMode": "code",
           "expr": "sum(sum by(namespace, pod, container) (irate(container_cpu_usage_seconds_total{image!=\"\", namespace=\"redhat-ods-applications\"}[5m])) * on(namespace, pod) group_left(node) topk by(namespace, pod) (1, max by(namespace, pod, node) (kube_pod_info{node!=\"\"}))) by (pod) > 0",
@@ -221,7 +221,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "dg0qeak3l5clcf"
+            "uid": "${DATA_SOURCE}"
           },
           "editorMode": "code",
           "expr": "sum(container_memory_working_set_bytes{container!=\"\", namespace=\"redhat-ods-applications\"}) by (pod) > 0",
@@ -363,15 +363,15 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "dg0qeak3l5clcf"
+            "uid": "${DATA_SOURCE}"
           },
           "editorMode": "code",
           "expr": "sum(workqueue_depth) by (name) > 0",
           "hide": false,
           "instant": false,
-          "legendFormat": "__auto",
+          "legendFormat": "{{name}}",
           "range": true,
-          "refId": "B"
+          "refId": "A"
         },
         {
           "datasource": {
@@ -384,7 +384,7 @@
           "instant": false,
           "legendFormat": "1m rate {{name}}",
           "range": true,
-          "refId": "A"
+          "refId": "B"
         }
       ],
       "title": "Work Queue Depth",
@@ -393,7 +393,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "dg0qeak3l5clcf"
+        "uid": "${DATA_SOURCE}"
       },
       "description": "Amount of data transmitted via the network for the spark operator and webhook",
       "fieldConfig": {
@@ -493,7 +493,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "dg0qeak3l5clcf"
+        "uid": "${DATA_SOURCE}"
       },
       "description": "Amount of data received via the network for the spark operator and webhook",
       "fieldConfig": {
@@ -593,7 +593,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "dg0qeak3l5clcf"
+        "uid": "${DATA_SOURCE}"
       },
       "description": "Rate of additions to the work queue per min",
       "fieldConfig": {
@@ -681,7 +681,7 @@
             "uid": "${DATA_SOURCE}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(workqueue_adds_total[1m])) by (name)  > 0",
+          "expr": "sum(rate(workqueue_adds_total[1m])) by (name) > 0",
           "hide": false,
           "instant": false,
           "legendFormat": "__auto",
@@ -695,7 +695,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "dg0qeak3l5clcf"
+        "uid": "${DATA_SOURCE}"
       },
       "description": "How long in seconds processing an item from workqueue takes, broken down by percentiles 99%, 90%, and 50%",
       "fieldConfig": {
@@ -786,7 +786,7 @@
             "uid": "${DATA_SOURCE}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99,sum(rate(workqueue_work_duration_seconds_bucket[5m])) by (name, le)) > 0",
+          "expr": "histogram_quantile(0.99, sum(rate(workqueue_work_duration_seconds_bucket[5m])) by (name, le)) > 0",
           "instant": false,
           "legendFormat": "{{name}} P99",
           "range": true,
@@ -795,10 +795,10 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "dg0qeak3l5clcf"
+            "uid": "${DATA_SOURCE}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.90,sum(rate(workqueue_work_duration_seconds_bucket[5m])) by (name, le)) > 0",
+          "expr": "histogram_quantile(0.90, sum(rate(workqueue_work_duration_seconds_bucket[5m])) by (name, le)) > 0",
           "hide": false,
           "instant": false,
           "legendFormat": "{{name}} P90",
@@ -811,7 +811,7 @@
             "uid": "${DATA_SOURCE}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50,sum(rate(workqueue_work_duration_seconds_bucket[5m])) by (name, le)) > 0",
+          "expr": "histogram_quantile(0.50, sum(rate(workqueue_work_duration_seconds_bucket[5m])) by (name, le)) > 0",
           "hide": false,
           "instant": false,
           "legendFormat": "{{name}} P50",
@@ -825,7 +825,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "dg0qeak3l5clcf"
+        "uid": "${DATA_SOURCE}"
       },
       "description": "How long in seconds an item stays in workqueue before being requested in percentiles 99%, 95%, and 50%",
       "fieldConfig": {
@@ -916,7 +916,7 @@
             "uid": "${DATA_SOURCE}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99,sum(rate(workqueue_queue_duration_seconds_bucket[5m])) by (name, le)) > 0",
+          "expr": "histogram_quantile(0.99, sum(rate(workqueue_queue_duration_seconds_bucket[5m])) by (name, le)) > 0",
           "instant": false,
           "legendFormat": "__auto",
           "range": true,
@@ -925,10 +925,10 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "dg0qeak3l5clcf"
+            "uid": "${DATA_SOURCE}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.90,sum(rate(workqueue_queue_duration_seconds_bucket[5m])) by (name, le)) > 0",
+          "expr": "histogram_quantile(0.90, sum(rate(workqueue_queue_duration_seconds_bucket[5m])) by (name, le)) > 0",
           "hide": false,
           "instant": false,
           "legendFormat": "{{name}} P90",
@@ -941,7 +941,7 @@
             "uid": "${DATA_SOURCE}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50,sum(rate(workqueue_queue_duration_seconds_bucket[5m])) by (name, le)) > 0",
+          "expr": "histogram_quantile(0.50, sum(rate(workqueue_queue_duration_seconds_bucket[5m])) by (name, le)) > 0",
           "hide": false,
           "instant": false,
           "legendFormat": "{{name}} P50",
@@ -955,7 +955,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "dg0qeak3l5clcf"
+        "uid": "${DATA_SOURCE}"
       },
       "description": "Total number of retries handled by work queue.",
       "fieldConfig": {
@@ -1057,7 +1057,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "dg0qeak3l5clcf"
+        "uid": "${DATA_SOURCE}"
       },
       "description": "How many seconds has the longest running processor for workqueue been running.",
       "fieldConfig": {
@@ -1163,9 +1163,9 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "dg0qeak3l5clcf"
+        "uid": "${DATA_SOURCE}"
       },
-      "description": "How many seconds of work has been done that is in progress and hasn\u2019t been observed by work_duration. Large values indicate stuck threads.",
+      "description": "How many seconds of work has been done that is in progress and hasn’t been observed by work_duration. Large values indicate stuck threads.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1279,7 +1279,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "dg0qeak3l5clcf"
+        "uid": "${DATA_SOURCE}"
       },
       "description": "Start latency of SparkApplication, broken down by percentiles 99%, 90%, and 50%",
       "fieldConfig": {
@@ -1381,7 +1381,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "dg0qeak3l5clcf"
+            "uid": "${DATA_SOURCE}"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.90, sum(rate(spark_application_start_latency_seconds_histogram_bucket[5m])) by (pod,le))",
@@ -1412,7 +1412,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "dg0qeak3l5clcf"
+        "uid": "${DATA_SOURCE}"
       },
       "description": "Counters for spark jobs, these are cumulative over the lifetime of the spark-operator pod",
       "fieldConfig": {
@@ -1475,7 +1475,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "dg0qeak3l5clcf"
+            "uid": "${DATA_SOURCE}"
           },
           "editorMode": "code",
           "expr": "sum(spark_application_failure_count) by (pod)",
@@ -1501,7 +1501,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "dg0qeak3l5clcf"
+            "uid": "${DATA_SOURCE}"
           },
           "editorMode": "code",
           "expr": "sum(spark_application_running_count) by (pod)",
@@ -1533,7 +1533,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "dg0qeak3l5clcf"
+        "uid": "${DATA_SOURCE}"
       },
       "description": "Total number of successful and failed executors",
       "fieldConfig": {
@@ -1606,7 +1606,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "dg0qeak3l5clcf"
+            "uid": "${DATA_SOURCE}"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -1711,7 +1711,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "dg0qeak3l5clcf"
+            "uid": "${DATA_SOURCE}"
           },
           "editorMode": "code",
           "expr": "sum(increase(spark_application_submit_count[1m])) by (pod)",
@@ -1812,7 +1812,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "dg0qeak3l5clcf"
+            "uid": "${DATA_SOURCE}"
           },
           "editorMode": "code",
           "expr": "sum(spark_application_running_count) / sum(spark_application_submit_count) ",
@@ -1913,7 +1913,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "dg0qeak3l5clcf"
+            "uid": "${DATA_SOURCE}"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -2015,7 +2015,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "dg0qeak3l5clcf"
+            "uid": "${DATA_SOURCE}"
           },
           "editorMode": "code",
           "expr": "sum(spark_application_failure_count) / sum(spark_application_submit_count) ",
@@ -2122,7 +2122,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "dg0qeak3l5clcf"
+                "uid": "${DATA_SOURCE}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.99, sum(rate(apiserver_request_duration_seconds_bucket{verb!~\"CONNECT|WATCH\"}[5m])) by (le, instance)) > 0",
@@ -2222,7 +2222,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "dg0qeak3l5clcf"
+                "uid": "${DATA_SOURCE}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.99, sum(rate(apiserver_request_duration_seconds_bucket{verb!~\"CONNECT|WATCH\"}[5m])) by (le, verb)) > 0",
@@ -2317,7 +2317,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "dg0qeak3l5clcf"
+                "uid": "${DATA_SOURCE}"
               },
               "editorMode": "code",
               "expr": "sum(rate(apiserver_request_total{verb!~\"CONNECT|WATCH\"}[5m])) by (verb,code) > 0",
@@ -2442,7 +2442,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "dg0qeak3l5clcf"
+                "uid": "${DATA_SOURCE}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.99, sum(rate(apiserver_admission_webhook_admission_duration_seconds_bucket[5m])) by (le, operation, name)) > 0",
@@ -2542,7 +2542,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "dg0qeak3l5clcf"
+                "uid": "${DATA_SOURCE}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.99, sum(rate(etcd_request_duration_seconds_bucket[5m])) by (le)) > 0",
@@ -2641,7 +2641,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "dg0qeak3l5clcf"
+                "uid": "${DATA_SOURCE}"
               },
               "editorMode": "code",
               "expr": "max(apiserver_storage_size_bytes)",
@@ -2739,7 +2739,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "dg0qeak3l5clcf"
+                "uid": "${DATA_SOURCE}"
               },
               "editorMode": "code",
               "expr": "max(apiserver_storage_objects{resource=\"sparkapplications.sparkoperator.k8s.io\"})",
@@ -2837,7 +2837,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "dg0qeak3l5clcf"
+                "uid": "${DATA_SOURCE}"
               },
               "editorMode": "code",
               "expr": "max(apiserver_storage_objects{resource=\"pods\"})",
@@ -2935,7 +2935,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "dg0qeak3l5clcf"
+                "uid": "${DATA_SOURCE}"
               },
               "editorMode": "code",
               "expr": "max(apiserver_storage_objects{resource=\"nodes\"})",
@@ -2960,10 +2960,7 @@
   "templating": {
     "list": [
       {
-        "current": {
-          "text": "prometheus",
-          "value": "dg0qeak3l5clcf"
-        },
+        "current": {},
         "description": "Prometheus data source to use for dashboard",
         "label": "Data Source",
         "name": "DATA_SOURCE",
@@ -2976,13 +2973,13 @@
     ]
   },
   "time": {
-    "from": "2026-10-08T19:40:00.000Z",
-    "to": "2026-10-08T21:10:00.000Z"
+    "from": "now-15m",
+    "to": "now"
   },
   "timepicker": {},
-  "timezone": "browser",
-  "title": "Spark-Operator Scale Test Dashboard",
-  "uid": "febroq9t3nhmoa",
-  "version": 2,
+  "timezone": "utc",
+  "title": "Spark-Operator Scale Test Dashboard - RHOAI",
+  "uid": "spark-operator-rhoai-benchmark",
+  "version": 1,
   "weekStart": ""
 }
