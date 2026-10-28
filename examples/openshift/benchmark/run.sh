@@ -158,12 +158,12 @@ if [[ "${#expected_controller_args[@]}" -gt 0 ]]; then
   {
     printf '%s\n' "${expected_controller_args[@]}"
     controller_configuration_patch="$(jq -nc \
-        --arg threads "${CONTROLLER_THREADS:-}" \
-        --arg workqueue_qps "${CONTROLLER_WORKQUEUE_QPS:-}" \
-        --arg workqueue_burst "${CONTROLLER_WORKQUEUE_BURST:-}" \
-        --arg workqueue_max_delay "${CONTROLLER_WORKQUEUE_MAX_DELAY:-}" \
-        --arg kube_api_qps "${CONTROLLER_KUBE_API_QPS:-}" \
-        --arg kube_api_burst "${CONTROLLER_KUBE_API_BURST:-}" '
+      --arg threads "${CONTROLLER_THREADS:-}" \
+      --arg workqueue_qps "${CONTROLLER_WORKQUEUE_QPS:-}" \
+      --arg workqueue_burst "${CONTROLLER_WORKQUEUE_BURST:-}" \
+      --arg workqueue_max_delay "${CONTROLLER_WORKQUEUE_MAX_DELAY:-}" \
+      --arg kube_api_qps "${CONTROLLER_KUBE_API_QPS:-}" \
+      --arg kube_api_burst "${CONTROLLER_KUBE_API_BURST:-}" '
           def number_field($name; $value):
             if $value == "" then {} else {($name): ($value | tonumber)} end;
           def string_field($name; $value):
@@ -189,7 +189,7 @@ if [[ "${#expected_controller_args[@]}" -gt 0 ]]; then
   controller_configuration_ready=false
   for attempt in $(seq 1 120); do
     actual_controller_args="$(oc get deployment spark-operator-controller \
-      -n redhat-ods-applications -o json 2>/dev/null |
+      -n redhat-ods-applications -o json 2> /dev/null |
       jq -r '.spec.template.spec.containers[] | select(.name == "controller") | .args[]')" || true
     controller_configuration_ready=true
     for expected_arg in "${expected_controller_args[@]}"; do
