@@ -129,7 +129,14 @@ spec:
       workqueueRateLimiter:
         bucketQPS: 50
         bucketSize: 500
-        maxDelay: 6h
+        maxDelay:
+          enabled: true
+          duration: 6h
+      batchScheduler:
+        enabled: true
+        kubeSchedulerNames:
+          - default-scheduler
+        default: volcano
       kubeAPIQPS: 20
       kubeAPIBurst: 30
 ```

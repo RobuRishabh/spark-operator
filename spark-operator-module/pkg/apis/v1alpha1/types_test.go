@@ -121,6 +121,11 @@ func TestResolveControllerConfiguration_NilWhenUnset(t *testing.T) {
 			WorkqueueRateLimiter: &WorkqueueRateLimiterConfiguration{},
 		}}},
 	})).To(BeNil())
+	g.Expect(ResolveControllerConfiguration(&SparkOperator{
+		Spec: SparkOperatorSpec{Spark: &SparkSpec{ControllerConfiguration: &ControllerConfiguration{
+			BatchScheduler: &BatchSchedulerConfiguration{},
+		}}},
+	})).To(BeNil())
 }
 
 func TestResolveControllerConfiguration_UsesConfigured(t *testing.T) {
@@ -129,6 +134,8 @@ func TestResolveControllerConfiguration_UsesConfigured(t *testing.T) {
 	qps := int32(50)
 	burst := int32(500)
 	maxDelay := "6h"
+	maxDelayEnabled, batchSchedulerEnabled := true, true
+	defaultBatchScheduler := "volcano"
 	kubeQPS := int32(20)
 	kubeBurst := int32(30)
 	configuration := &ControllerConfiguration{
@@ -136,7 +143,15 @@ func TestResolveControllerConfiguration_UsesConfigured(t *testing.T) {
 		WorkqueueRateLimiter: &WorkqueueRateLimiterConfiguration{
 			BucketQPS:  &qps,
 			BucketSize: &burst,
-			MaxDelay:   &maxDelay,
+			MaxDelay: &WorkqueueMaxDelayConfiguration{
+				Enabled:  &maxDelayEnabled,
+				Duration: &maxDelay,
+			},
+		},
+		BatchScheduler: &BatchSchedulerConfiguration{
+			Enabled:            &batchSchedulerEnabled,
+			KubeSchedulerNames: []string{"default-scheduler"},
+			Default:            &defaultBatchScheduler,
 		},
 		KubeAPIQPS:   &kubeQPS,
 		KubeAPIBurst: &kubeBurst,

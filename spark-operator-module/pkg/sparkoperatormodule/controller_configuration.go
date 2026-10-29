@@ -14,6 +14,7 @@ import (
 type controllerArgumentOverride struct {
 	prefix string
 	value  string
+	remove bool
 }
 
 // applyControllerConfiguration writes explicitly configured controller
@@ -58,7 +59,11 @@ func applyControllerConfiguration(resources []unstructured.Unstructured,
 				return err
 			}
 			for _, override := range overrides {
-				args = setControllerArgument(args, override.prefix, override.value)
+				if override.remove {
+					args = removeControllerArgument(args, override.prefix)
+				} else {
+					args = setControllerArgument(args, override.prefix, override.value)
+				}
 			}
 			container["args"] = args
 			containers[ci] = container
@@ -74,31 +79,78 @@ func applyControllerConfiguration(resources []unstructured.Unstructured,
 }
 
 func controllerArgumentOverrides(configuration *platformv1alpha1.ControllerConfiguration) ([]controllerArgumentOverride, error) {
-	overrides := make([]controllerArgumentOverride, 0, 6)
+	overrides := make([]controllerArgumentOverride, 0, 10)
 	if configuration.Workers != nil {
-		overrides = append(overrides, controllerArgumentOverride{"--controller-threads=", strconv.FormatInt(int64(*configuration.Workers), 10)})
+		overrides = append(overrides, controllerArgumentOverride{
+			prefix: "--controller-threads=",
+			value:  strconv.FormatInt(int64(*configuration.Workers), 10),
+		})
 	}
 	if configuration.WorkqueueRateLimiter != nil {
 		workqueue := configuration.WorkqueueRateLimiter
 		if workqueue.BucketQPS != nil {
-			overrides = append(overrides, controllerArgumentOverride{"--workqueue-ratelimiter-bucket-qps=", strconv.FormatInt(int64(*workqueue.BucketQPS), 10)})
+			overrides = append(overrides, controllerArgumentOverride{
+				prefix: "--workqueue-ratelimiter-bucket-qps=",
+				value:  strconv.FormatInt(int64(*workqueue.BucketQPS), 10),
+			})
 		}
 		if workqueue.BucketSize != nil {
-			overrides = append(overrides, controllerArgumentOverride{"--workqueue-ratelimiter-bucket-size=", strconv.FormatInt(int64(*workqueue.BucketSize), 10)})
+			overrides = append(overrides, controllerArgumentOverride{
+				prefix: "--workqueue-ratelimiter-bucket-size=",
+				value:  strconv.FormatInt(int64(*workqueue.BucketSize), 10),
+			})
 		}
 		if workqueue.MaxDelay != nil {
-			duration, err := time.ParseDuration(*workqueue.MaxDelay)
-			if err != nil || duration <= 0 {
-				return nil, fmt.Errorf("controller workqueue maxDelay must be greater than zero")
+			maxDelay := workqueue.MaxDelay
+			if maxDelay.Enabled != nil && !*maxDelay.Enabled {
+				overrides = append(overrides, controllerArgumentOverride{
+					prefix: "--workqueue-ratelimiter-max-delay=",
+					remove: true,
+				})
+			} else if maxDelay.Duration != nil {
+				duration, err := time.ParseDuration(*maxDelay.Duration)
+				if err != nil || duration <= 0 {
+					return nil, fmt.Errorf("controller workqueue maxDelay duration must be greater than zero")
+				}
+				overrides = append(overrides, controllerArgumentOverride{
+					prefix: "--workqueue-ratelimiter-max-delay=",
+					value:  *maxDelay.Duration,
+				})
 			}
-			overrides = append(overrides, controllerArgumentOverride{"--workqueue-ratelimiter-max-delay=", *workqueue.MaxDelay})
+		}
+	}
+	if configuration.BatchScheduler != nil {
+		batchScheduler := configuration.BatchScheduler
+		if batchScheduler.Enabled != nil {
+			overrides = append(overrides, controllerArgumentOverride{
+				prefix: "--enable-batch-scheduler=",
+				value:  strconv.FormatBool(*batchScheduler.Enabled),
+			})
+		}
+		if len(batchScheduler.KubeSchedulerNames) > 0 {
+			overrides = append(overrides, controllerArgumentOverride{
+				prefix: "--kube-scheduler-names=",
+				value:  strings.Join(batchScheduler.KubeSchedulerNames, ","),
+			})
+		}
+		if batchScheduler.Default != nil {
+			overrides = append(overrides, controllerArgumentOverride{
+				prefix: "--default-batch-scheduler=",
+				value:  *batchScheduler.Default,
+			})
 		}
 	}
 	if configuration.KubeAPIQPS != nil {
-		overrides = append(overrides, controllerArgumentOverride{"--kube-api-qps=", strconv.FormatInt(int64(*configuration.KubeAPIQPS), 10)})
+		overrides = append(overrides, controllerArgumentOverride{
+			prefix: "--kube-api-qps=",
+			value:  strconv.FormatInt(int64(*configuration.KubeAPIQPS), 10),
+		})
 	}
 	if configuration.KubeAPIBurst != nil {
-		overrides = append(overrides, controllerArgumentOverride{"--kube-api-burst=", strconv.FormatInt(int64(*configuration.KubeAPIBurst), 10)})
+		overrides = append(overrides, controllerArgumentOverride{
+			prefix: "--kube-api-burst=",
+			value:  strconv.FormatInt(int64(*configuration.KubeAPIBurst), 10),
+		})
 	}
 	return overrides, nil
 }
@@ -136,6 +188,17 @@ func setControllerArgument(args []any, prefix, value string) []any {
 	}
 	if !replaced {
 		updated = append(updated, prefix+value)
+	}
+	return updated
+}
+
+func removeControllerArgument(args []any, prefix string) []any {
+	updated := make([]any, 0, len(args))
+	for _, raw := range args {
+		arg := raw.(string)
+		if !strings.HasPrefix(arg, prefix) {
+			updated = append(updated, arg)
+		}
 	}
 	return updated
 }

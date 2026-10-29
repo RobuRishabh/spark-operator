@@ -23,13 +23,23 @@ func TestApplyControllerConfiguration_OverridesAllSettings(t *testing.T) {
 	workers, workqueueQPS, workqueueBurst := int32(20), int32(100), int32(750)
 	kubeQPS, kubeBurst := int32(50), int32(100)
 	maxDelay := "30m"
+	maxDelayEnabled, batchSchedulerEnabled := true, true
+	defaultBatchScheduler := "volcano"
 
 	configuration := &platformv1alpha1.ControllerConfiguration{
 		Workers: &workers,
 		WorkqueueRateLimiter: &platformv1alpha1.WorkqueueRateLimiterConfiguration{
 			BucketQPS:  &workqueueQPS,
 			BucketSize: &workqueueBurst,
-			MaxDelay:   &maxDelay,
+			MaxDelay: &platformv1alpha1.WorkqueueMaxDelayConfiguration{
+				Enabled:  &maxDelayEnabled,
+				Duration: &maxDelay,
+			},
+		},
+		BatchScheduler: &platformv1alpha1.BatchSchedulerConfiguration{
+			Enabled:            &batchSchedulerEnabled,
+			KubeSchedulerNames: []string{"default-scheduler", "high-throughput"},
+			Default:            &defaultBatchScheduler,
 		},
 		KubeAPIQPS:   &kubeQPS,
 		KubeAPIBurst: &kubeBurst,
@@ -42,6 +52,9 @@ func TestApplyControllerConfiguration_OverridesAllSettings(t *testing.T) {
 		"--workqueue-ratelimiter-bucket-qps=100",
 		"--workqueue-ratelimiter-bucket-size=750",
 		"--workqueue-ratelimiter-max-delay=30m",
+		"--enable-batch-scheduler=true",
+		"--kube-scheduler-names=default-scheduler,high-throughput",
+		"--default-batch-scheduler=volcano",
 		"--kube-api-qps=50",
 		"--kube-api-burst=100",
 	))
@@ -68,9 +81,25 @@ func TestApplyControllerConfiguration_RejectsNonPositiveMaxDelay(t *testing.T) {
 	maxDelay := "0s"
 
 	err := applyControllerConfiguration(resources, &platformv1alpha1.ControllerConfiguration{
-		WorkqueueRateLimiter: &platformv1alpha1.WorkqueueRateLimiterConfiguration{MaxDelay: &maxDelay},
+		WorkqueueRateLimiter: &platformv1alpha1.WorkqueueRateLimiterConfiguration{
+			MaxDelay: &platformv1alpha1.WorkqueueMaxDelayConfiguration{Duration: &maxDelay},
+		},
 	})
-	g.Expect(err).To(MatchError("controller workqueue maxDelay must be greater than zero"))
+	g.Expect(err).To(MatchError("controller workqueue maxDelay duration must be greater than zero"))
+}
+
+func TestApplyControllerConfiguration_DisablesWorkqueueMaxDelay(t *testing.T) {
+	g := NewWithT(t)
+	resources := []unstructured.Unstructured{controllerDeploymentUnstructured("512Mi")}
+	disabled := false
+
+	err := applyControllerConfiguration(resources, &platformv1alpha1.ControllerConfiguration{
+		WorkqueueRateLimiter: &platformv1alpha1.WorkqueueRateLimiterConfiguration{
+			MaxDelay: &platformv1alpha1.WorkqueueMaxDelayConfiguration{Enabled: &disabled},
+		},
+	})
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(controllerArgs(resources[0])).NotTo(ContainElement("--workqueue-ratelimiter-max-delay=6h"))
 }
 
 func controllerArgs(dep unstructured.Unstructured) []string {
