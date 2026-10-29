@@ -67,32 +67,6 @@ spec:
                       spark-operator-controller Deployment. Unset fields keep the rendered
                       manifest defaults.
                     properties:
-                      batchScheduler:
-                        description: |-
-                          BatchScheduler configures optional batch scheduler support for Spark
-                          workloads.
-                        properties:
-                          default:
-                            description: |-
-                              Default is the batch scheduler used when a Spark workload does not
-                              specify one.
-                            enum:
-                            - volcano
-                            - yunikorn
-                            type: string
-                          enabled:
-                            description: Enabled controls whether batch scheduler
-                              integration is enabled.
-                            type: boolean
-                          kubeSchedulerNames:
-                            description: |-
-                              KubeSchedulerNames lists kube-scheduler profiles that the operator may
-                              use for Spark workloads.
-                            items:
-                              type: string
-                            type: array
-                            x-kubernetes-list-type: set
-                        type: object
                       kubeAPIBurst:
                         description: |-
                           KubeAPIBurst is the maximum burst used by the controller's Kubernetes API

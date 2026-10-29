@@ -71,7 +71,7 @@ type SparkSpec struct {
 }
 
 // ControllerConfiguration configures controller concurrency, workqueue rate
-// limiting, batch scheduling, and Kubernetes API client throttling.
+// limiting, and Kubernetes API client throttling.
 type ControllerConfiguration struct {
 	// Workers is the number of concurrent controller reconciliation workers.
 	// +optional
@@ -81,11 +81,6 @@ type ControllerConfiguration struct {
 	// WorkqueueRateLimiter configures the controller workqueue rate limiter.
 	// +optional
 	WorkqueueRateLimiter *WorkqueueRateLimiterConfiguration `json:"workqueueRateLimiter,omitempty"`
-
-	// BatchScheduler configures optional batch scheduler support for Spark
-	// workloads.
-	// +optional
-	BatchScheduler *BatchSchedulerConfiguration `json:"batchScheduler,omitempty"`
 
 	// KubeAPIQPS is the maximum sustained request rate used by the controller's
 	// Kubernetes API client.
@@ -130,25 +125,6 @@ type WorkqueueMaxDelayConfiguration struct {
 	// +optional
 	// +kubebuilder:validation:MinLength=1
 	Duration *string `json:"duration,omitempty"`
-}
-
-// BatchSchedulerConfiguration configures optional batch scheduler support.
-type BatchSchedulerConfiguration struct {
-	// Enabled controls whether batch scheduler integration is enabled.
-	// +optional
-	Enabled *bool `json:"enabled,omitempty"`
-
-	// KubeSchedulerNames lists kube-scheduler profiles that the operator may
-	// use for Spark workloads.
-	// +optional
-	// +listType=set
-	KubeSchedulerNames []string `json:"kubeSchedulerNames,omitempty"`
-
-	// Default is the batch scheduler used when a Spark workload does not
-	// specify one.
-	// +optional
-	// +kubebuilder:validation:Enum=volcano;yunikorn
-	Default *string `json:"default,omitempty"`
 }
 
 // SparkOperatorStatus defines the observed state of SparkOperator.
@@ -219,13 +195,8 @@ func ResolveControllerConfiguration(sparkOperator *SparkOperator) *ControllerCon
 		(configuration.WorkqueueRateLimiter.BucketQPS != nil ||
 			configuration.WorkqueueRateLimiter.BucketSize != nil ||
 			configuration.WorkqueueRateLimiter.MaxDelay != nil)
-	batchSchedulerConfigured := configuration.BatchScheduler != nil &&
-		(configuration.BatchScheduler.Enabled != nil ||
-			len(configuration.BatchScheduler.KubeSchedulerNames) > 0 ||
-			configuration.BatchScheduler.Default != nil)
 	if configuration.Workers == nil && configuration.KubeAPIQPS == nil &&
-		configuration.KubeAPIBurst == nil && !workqueueConfigured &&
-		!batchSchedulerConfigured {
+		configuration.KubeAPIBurst == nil && !workqueueConfigured {
 		return nil
 	}
 	return configuration

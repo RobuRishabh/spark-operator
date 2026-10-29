@@ -79,7 +79,7 @@ func applyControllerConfiguration(resources []unstructured.Unstructured,
 }
 
 func controllerArgumentOverrides(configuration *platformv1alpha1.ControllerConfiguration) ([]controllerArgumentOverride, error) {
-	overrides := make([]controllerArgumentOverride, 0, 10)
+	overrides := make([]controllerArgumentOverride, 0, 6)
 	if configuration.Workers != nil {
 		overrides = append(overrides, controllerArgumentOverride{
 			prefix: "--controller-threads=",
@@ -117,27 +117,6 @@ func controllerArgumentOverrides(configuration *platformv1alpha1.ControllerConfi
 					value:  *maxDelay.Duration,
 				})
 			}
-		}
-	}
-	if configuration.BatchScheduler != nil {
-		batchScheduler := configuration.BatchScheduler
-		if batchScheduler.Enabled != nil {
-			overrides = append(overrides, controllerArgumentOverride{
-				prefix: "--enable-batch-scheduler=",
-				value:  strconv.FormatBool(*batchScheduler.Enabled),
-			})
-		}
-		if len(batchScheduler.KubeSchedulerNames) > 0 {
-			overrides = append(overrides, controllerArgumentOverride{
-				prefix: "--kube-scheduler-names=",
-				value:  strings.Join(batchScheduler.KubeSchedulerNames, ","),
-			})
-		}
-		if batchScheduler.Default != nil {
-			overrides = append(overrides, controllerArgumentOverride{
-				prefix: "--default-batch-scheduler=",
-				value:  *batchScheduler.Default,
-			})
 		}
 	}
 	if configuration.KubeAPIQPS != nil {

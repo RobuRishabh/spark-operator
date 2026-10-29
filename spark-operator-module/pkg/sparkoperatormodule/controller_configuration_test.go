@@ -23,8 +23,7 @@ func TestApplyControllerConfiguration_OverridesAllSettings(t *testing.T) {
 	workers, workqueueQPS, workqueueBurst := int32(20), int32(100), int32(750)
 	kubeQPS, kubeBurst := int32(50), int32(100)
 	maxDelay := "30m"
-	maxDelayEnabled, batchSchedulerEnabled := true, true
-	defaultBatchScheduler := "volcano"
+	maxDelayEnabled := true
 
 	configuration := &platformv1alpha1.ControllerConfiguration{
 		Workers: &workers,
@@ -35,11 +34,6 @@ func TestApplyControllerConfiguration_OverridesAllSettings(t *testing.T) {
 				Enabled:  &maxDelayEnabled,
 				Duration: &maxDelay,
 			},
-		},
-		BatchScheduler: &platformv1alpha1.BatchSchedulerConfiguration{
-			Enabled:            &batchSchedulerEnabled,
-			KubeSchedulerNames: []string{"default-scheduler", "high-throughput"},
-			Default:            &defaultBatchScheduler,
 		},
 		KubeAPIQPS:   &kubeQPS,
 		KubeAPIBurst: &kubeBurst,
@@ -52,9 +46,6 @@ func TestApplyControllerConfiguration_OverridesAllSettings(t *testing.T) {
 		"--workqueue-ratelimiter-bucket-qps=100",
 		"--workqueue-ratelimiter-bucket-size=750",
 		"--workqueue-ratelimiter-max-delay=30m",
-		"--enable-batch-scheduler=true",
-		"--kube-scheduler-names=default-scheduler,high-throughput",
-		"--default-batch-scheduler=volcano",
 		"--kube-api-qps=50",
 		"--kube-api-burst=100",
 	))

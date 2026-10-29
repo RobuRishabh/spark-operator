@@ -132,11 +132,6 @@ spec:
         maxDelay:
           enabled: true
           duration: 6h
-      batchScheduler:
-        enabled: true
-        kubeSchedulerNames:
-          - default-scheduler
-        default: volcano
       kubeAPIQPS: 20
       kubeAPIBurst: 30
 ```

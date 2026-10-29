@@ -270,8 +270,7 @@ var _ = Describe("SparkOperatorModule Reconciler", func() {
 		workers, workqueueQPS, workqueueBurst := int32(20), int32(100), int32(500)
 		kubeQPS, kubeBurst := int32(50), int32(100)
 		maxDelay := "6h"
-		maxDelayEnabled, batchSchedulerEnabled := true, true
-		defaultBatchScheduler := "volcano"
+		maxDelayEnabled := true
 		cr := fixture.SparkOperatorCR(fixture.WithControllerConfiguration(platformv1alpha1.ControllerConfiguration{
 			Workers: &workers,
 			WorkqueueRateLimiter: &platformv1alpha1.WorkqueueRateLimiterConfiguration{
@@ -281,11 +280,6 @@ var _ = Describe("SparkOperatorModule Reconciler", func() {
 					Enabled:  &maxDelayEnabled,
 					Duration: &maxDelay,
 				},
-			},
-			BatchScheduler: &platformv1alpha1.BatchSchedulerConfiguration{
-				Enabled:            &batchSchedulerEnabled,
-				KubeSchedulerNames: []string{"default-scheduler"},
-				Default:            &defaultBatchScheduler,
 			},
 			KubeAPIQPS:   &kubeQPS,
 			KubeAPIBurst: &kubeBurst,
@@ -321,9 +315,6 @@ var _ = Describe("SparkOperatorModule Reconciler", func() {
 				"--workqueue-ratelimiter-bucket-qps=100",
 				"--workqueue-ratelimiter-bucket-size=500",
 				"--workqueue-ratelimiter-max-delay=6h",
-				"--enable-batch-scheduler=true",
-				"--kube-scheduler-names=default-scheduler",
-				"--default-batch-scheduler=volcano",
 				"--kube-api-qps=50",
 				"--kube-api-burst=100",
 			))
