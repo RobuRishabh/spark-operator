@@ -107,6 +107,8 @@ func controllerArgumentOverrides(configuration *platformv1alpha1.ControllerConfi
 					prefix: "--workqueue-ratelimiter-max-delay=",
 					remove: true,
 				})
+			} else if maxDelay.Enabled != nil && maxDelay.Duration == nil {
+				return nil, fmt.Errorf("controller workqueue maxDelay duration is required when enabled")
 			} else if maxDelay.Duration != nil {
 				duration, err := time.ParseDuration(*maxDelay.Duration)
 				if err != nil || duration <= 0 {

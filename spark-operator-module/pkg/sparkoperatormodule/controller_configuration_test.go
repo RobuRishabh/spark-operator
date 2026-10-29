@@ -79,6 +79,19 @@ func TestApplyControllerConfiguration_RejectsNonPositiveMaxDelay(t *testing.T) {
 	g.Expect(err).To(MatchError("controller workqueue maxDelay duration must be greater than zero"))
 }
 
+func TestApplyControllerConfiguration_RequiresDurationWhenMaxDelayEnabled(t *testing.T) {
+	g := NewWithT(t)
+	resources := []unstructured.Unstructured{controllerDeploymentUnstructured("512Mi")}
+	enabled := true
+
+	err := applyControllerConfiguration(resources, &platformv1alpha1.ControllerConfiguration{
+		WorkqueueRateLimiter: &platformv1alpha1.WorkqueueRateLimiterConfiguration{
+			MaxDelay: &platformv1alpha1.WorkqueueMaxDelayConfiguration{Enabled: &enabled},
+		},
+	})
+	g.Expect(err).To(MatchError("controller workqueue maxDelay duration is required when enabled"))
+}
+
 func TestApplyControllerConfiguration_DisablesWorkqueueMaxDelay(t *testing.T) {
 	g := NewWithT(t)
 	resources := []unstructured.Unstructured{controllerDeploymentUnstructured("512Mi")}

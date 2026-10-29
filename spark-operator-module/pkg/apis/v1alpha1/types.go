@@ -114,6 +114,7 @@ type WorkqueueRateLimiterConfiguration struct {
 }
 
 // WorkqueueMaxDelayConfiguration controls the maximum per-item retry delay.
+// +kubebuilder:validation:XValidation:rule="!has(self.enabled) || !self.enabled || has(self.duration)",message="duration is required when maxDelay is enabled"
 type WorkqueueMaxDelayConfiguration struct {
 	// Enabled controls whether the controller sets a finite maximum retry
 	// delay. False removes the rendered max-delay argument.
@@ -124,6 +125,7 @@ type WorkqueueMaxDelayConfiguration struct {
 	// "6h" or "30m".
 	// +optional
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:Pattern=^([0-9]+([.][0-9]+)?)(ns|us|µs|μs|ms|s|m|h)([0-9]+([.][0-9]+)?(ns|us|µs|μs|ms|s|m|h))*$
 	Duration *string `json:"duration,omitempty"`
 }
 
