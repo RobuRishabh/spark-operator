@@ -69,6 +69,12 @@ const (
 	InstallMethodHelm         = "helm"
 	InstallMethodKustomize    = "kustomize"
 	InstallMethodPreinstalled = "preinstalled"
+
+	PrometheusNamespace          = "spark-operator-monitoring"
+	prometheusScrapeTestEnv      = "PROMETHEUS_SCRAPE_TEST"
+	prometheusOperatorBundleURL  = "https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.92.1/bundle.yaml"
+	prometheusOperatorDeployment = "prometheus-operator"
+	prometheusStatefulSetName    = "prometheus-spark-operator"
 )
 
 var (
@@ -414,13 +420,20 @@ func installWithKustomize() {
 		overrideParamsEnvImage(kustomizeDir, operatorImage)
 	}
 
-	ensurePodMonitorCRDForKIND()
-	ensureMetricsTLSSecretsForKIND()
+	if prometheusScrapeTestEnabled() {
+		installPrometheusOperatorForKIND()
+	} else {
+		ensurePodMonitorCRDForKIND()
+	}
 
 	By("Applying Kustomize manifests")
 	output, err := runCommand("kubectl", "apply", "-k", kustomizeDir, "--server-side=true", "--force-conflicts")
 	logf.Log.Info("kubectl apply -k output", "output", output)
 	Expect(err).NotTo(HaveOccurred(), "Failed to apply kustomize manifests: %s", output)
+
+	// Populate these after server-side apply so the empty ConfigMap manifest
+	// cannot clear the generated CA data before Prometheus reads it.
+	ensureMetricsTLSSecretsForKIND()
 
 	By("Waiting for operator deployments to be available")
 	output, err = runCommand("kubectl", "wait", "--for=condition=Available", "deployment",
@@ -429,6 +442,47 @@ func installWithKustomize() {
 		fmt.Sprintf("--timeout=%s", WaitTimeout))
 	logf.Log.Info("kubectl wait output", "output", output)
 	Expect(err).NotTo(HaveOccurred(), "Deployments did not become available: %s", output)
+
+	if prometheusScrapeTestEnabled() {
+		installPrometheusScrapeTestInstanceForKIND()
+	}
+}
+
+func prometheusScrapeTestEnabled() bool {
+	return strings.EqualFold(os.Getenv(prometheusScrapeTestEnv), "true")
+}
+
+func installPrometheusOperatorForKIND() {
+	Expect(runningOnOpenShift()).To(BeFalse(), "%s is supported only by the KIND test environment", prometheusScrapeTestEnv)
+
+	By("Installing Prometheus Operator for the PodMonitor integration test")
+	output, err := runCommand("kubectl", "apply", "--server-side=true", "-f", prometheusOperatorBundleURL)
+	Expect(err).NotTo(HaveOccurred(), "Failed to install Prometheus Operator: %s", output)
+
+	output, err = runCommand("kubectl", "wait", "--for=condition=Established",
+		"crd/podmonitors.monitoring.coreos.com", "crd/prometheuses.monitoring.coreos.com", "--timeout=2m")
+	Expect(err).NotTo(HaveOccurred(), "Prometheus CRDs were not established: %s", output)
+
+	output, err = runCommand("kubectl", "rollout", "status", "deployment/"+prometheusOperatorDeployment,
+		"-n", "default", "--timeout=2m")
+	Expect(err).NotTo(HaveOccurred(), "Prometheus Operator did not become ready: %s", output)
+}
+
+func installPrometheusScrapeTestInstanceForKIND() {
+	By("Creating a Prometheus instance for the PodMonitor integration test")
+	prometheusManifest := filepath.Join(repoRoot, "test", "e2e", "rhoai", "testdata", "prometheus.yaml")
+	output, err := runCommand("kubectl", "apply", "-f", prometheusManifest)
+	Expect(err).NotTo(HaveOccurred(), "Failed to create Prometheus test instance: %s", output)
+
+	Eventually(func() error {
+		_, getErr := runCommand("kubectl", "get", "statefulset/"+prometheusStatefulSetName,
+			"-n", PrometheusNamespace)
+		return getErr
+	}).WithTimeout(2*time.Minute).WithPolling(time.Second).Should(Succeed(), "Prometheus StatefulSet was not created")
+
+	output, err = runCommand("kubectl", "rollout", "status", "statefulset/"+prometheusStatefulSetName,
+		"-n", PrometheusNamespace, "--timeout=3m")
+	Expect(err).NotTo(HaveOccurred(), "Prometheus did not become ready: %s", output)
 }
 
 func uninstallKustomize() {

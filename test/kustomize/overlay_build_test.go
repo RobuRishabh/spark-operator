@@ -165,8 +165,20 @@ func TestOverlayBuilds(t *testing.T) {
 				webhookDep := overlayFindResource(resources, "Deployment", "spark-operator-webhook")
 				require.NotNil(t, webhookDep, "Deployment/spark-operator-webhook not found in %s overlay", overlay.name)
 
-				podMonitor := overlayFindResource(resources, "PodMonitor", "spark-operator-podmonitor")
-				require.NotNil(t, podMonitor, "PodMonitor/spark-operator-podmonitor not found in %s overlay", overlay.name)
+				for _, pmName := range []string{
+					"spark-operator-podmonitor",
+					"spark-operator-webhook-podmonitor",
+				} {
+					podMonitor := overlayFindResource(resources, "PodMonitor", pmName)
+					require.NotNil(t, podMonitor, "PodMonitor/%s not found in %s overlay", pmName, overlay.name)
+				}
+			})
+
+			t.Run("PodMonitorUpgradeIdentity", func(t *testing.T) {
+				require.NotNil(t, overlayFindResource(resources, "PodMonitor", "spark-operator-podmonitor"),
+					"legacy PodMonitor name must be preserved so upgrades update the live object")
+				assert.Nil(t, overlayFindResource(resources, "PodMonitor", "spark-operator-controller-podmonitor"),
+					"a renamed controller PodMonitor would leave the legacy object behind during upgrades")
 			})
 
 			t.Run("NamespaceOverride", func(t *testing.T) {
@@ -243,13 +255,18 @@ func TestOverlayBuilds(t *testing.T) {
 			})
 
 			t.Run("PrometheusMonitoringLabel", func(t *testing.T) {
-				pm := overlayFindResource(resources, "PodMonitor", "spark-operator-podmonitor")
-				require.NotNil(t, pm)
-				assert.Equal(t, overlay.namespace, pm.GetNamespace(),
-					"PodMonitor should be in %s namespace", overlay.namespace)
-				labels := pm.GetLabels()
-				assert.Equal(t, "true", labels["opendatahub.io/monitoring"],
-					"PodMonitor should have monitoring label for observability stack")
+				for _, pmName := range []string{
+					"spark-operator-podmonitor",
+					"spark-operator-webhook-podmonitor",
+				} {
+					pm := overlayFindResource(resources, "PodMonitor", pmName)
+					require.NotNil(t, pm, "PodMonitor/%s not found", pmName)
+					assert.Equal(t, overlay.namespace, pm.GetNamespace(),
+						"PodMonitor/%s should be in %s namespace", pmName, overlay.namespace)
+					labels := pm.GetLabels()
+					assert.Equal(t, "true", labels["opendatahub.io/monitoring"],
+						"PodMonitor/%s should have monitoring label for observability stack", pmName)
+				}
 			})
 
 			t.Run("SparkJobNetworkPolicyUnchanged", func(t *testing.T) {
@@ -374,16 +391,55 @@ func TestOverlayBuilds(t *testing.T) {
 			})
 
 			t.Run("MetricsPortMatchesPodMonitorAndDeployments", func(t *testing.T) {
-				pmObj := overlayFindResource(resources, "PodMonitor", "spark-operator-podmonitor")
-				require.NotNil(t, pmObj)
-				endpoints, found, err := unstructured.NestedSlice(pmObj.Object, "spec", "podMetricsEndpoints")
-				require.NoError(t, err)
-				require.True(t, found)
-				require.NotEmpty(t, endpoints)
-				ep, ok := endpoints[0].(map[string]any)
-				require.True(t, ok)
-				assert.Equal(t, "metrics", ep["port"])
-				assert.Equal(t, "/metrics", ep["path"])
+				type podMonitorExpectation struct {
+					name       string
+					component  string
+					serverName string
+				}
+				expectations := []podMonitorExpectation{
+					{
+						name:       "spark-operator-podmonitor",
+						component:  "controller",
+						serverName: "spark-operator-controller-metrics." + overlay.namespace + ".svc",
+					},
+					{
+						name:       "spark-operator-webhook-podmonitor",
+						component:  "webhook",
+						serverName: "spark-operator-webhook-metrics." + overlay.namespace + ".svc",
+					},
+				}
+
+				for _, expect := range expectations {
+					pmObj := overlayFindResource(resources, "PodMonitor", expect.name)
+					require.NotNil(t, pmObj, "PodMonitor/%s not found", expect.name)
+
+					selector, found, err := unstructured.NestedStringMap(pmObj.Object, "spec", "selector", "matchLabels")
+					require.NoError(t, err)
+					require.True(t, found)
+					assert.Equal(t, "spark-operator", selector["app.kubernetes.io/name"])
+					assert.Equal(t, expect.component, selector["app.kubernetes.io/component"],
+						"PodMonitor/%s must select only the %s component", expect.name, expect.component)
+
+					endpoints, found, err := unstructured.NestedSlice(pmObj.Object, "spec", "podMetricsEndpoints")
+					require.NoError(t, err)
+					require.True(t, found)
+					require.NotEmpty(t, endpoints)
+					ep, ok := endpoints[0].(map[string]any)
+					require.True(t, ok)
+					assert.Equal(t, "metrics", ep["port"])
+					assert.Equal(t, "/metrics", ep["path"])
+					assert.Equal(t, "https", ep["scheme"])
+
+					serverName, found, err := unstructured.NestedString(ep, "tlsConfig", "serverName")
+					require.NoError(t, err)
+					require.True(t, found, "PodMonitor/%s must set tlsConfig.serverName", expect.name)
+					assert.Equal(t, expect.serverName, serverName)
+
+					caName, found, err := unstructured.NestedString(ep, "tlsConfig", "ca", "configMap", "name")
+					require.NoError(t, err)
+					require.True(t, found)
+					assert.Equal(t, "spark-operator-metrics-ca-bundle", caName)
+				}
 
 				for _, depName := range []string{"spark-operator-controller", "spark-operator-webhook"} {
 					depObj := overlayFindResource(resources, "Deployment", depName)
