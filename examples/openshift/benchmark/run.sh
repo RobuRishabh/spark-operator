@@ -4,6 +4,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HARNESS="${ROOT}/harness"
+"${HARNESS}/setup_venv.sh"
+
 RESULTS_BASE="${ROOT}/results"
 RUN_ID="${RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
 RESULTS_DIR="${RESULTS_BASE}/${RUN_ID}"
@@ -31,12 +33,6 @@ for value_name in USERS JOBS_PER_USER WEBHOOK_WAIT_TIMEOUT_SECONDS WEBHOOK_WAIT_
 done
 TOTAL_APPLICATIONS=$((USERS * JOBS_PER_USER))
 
-if [[ ! -d "${HARNESS}/.venv" ]]; then
-  echo "==> Creating venv and installing harness"
-  python3 -m venv "${HARNESS}/.venv"
-  "${HARNESS}/.venv/bin/pip" install -U pip
-  "${HARNESS}/.venv/bin/pip" install -r "${HARNESS}/requirements.txt"
-fi
 PYTHON_CMD="${HARNESS}/.venv/bin/python"
 # shellcheck disable=SC1091
 source "${HARNESS}/.venv/bin/activate"

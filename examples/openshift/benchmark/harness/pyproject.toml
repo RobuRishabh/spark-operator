@@ -2,7 +2,7 @@
 name = "openshift-spark-operator-benchmark"
 version = "0.1.0"
 description = "OpenShift AI adaptation of the Kubeflow Spark Operator Locust benchmark harness"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.13"
 dependencies = [
   "kubernetes>=29.0.0",
   "certifi>=2024.2.2",

@@ -13,10 +13,7 @@ if [[ -z "${OUT_DIR}" ]]; then
 fi
 mkdir -p "${OUT_DIR}"
 
-if [[ ! -d "${ROOT}/harness/.venv" ]]; then
-  python3 -m venv "${ROOT}/harness/.venv"
-  "${ROOT}/harness/.venv/bin/pip" install -q -r "${ROOT}/harness/requirements.txt"
-fi
+"${ROOT}/harness/setup_venv.sh"
 
 "${ROOT}/harness/.venv/bin/python" "${ROOT}/metrics/snapshot.py" \
   --queries "${ROOT}/metrics/prometheus-queries.yaml" \
