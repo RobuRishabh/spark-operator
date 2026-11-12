@@ -22,26 +22,46 @@ export SPARK_BENCH_INSECURE_SKIP_TLS_VERIFY="${SPARK_BENCH_INSECURE_SKIP_TLS_VER
 WEBHOOK_WAIT_TIMEOUT_SECONDS="${WEBHOOK_WAIT_TIMEOUT_SECONDS:-600}"
 WEBHOOK_WAIT_INTERVAL_SECONDS="${WEBHOOK_WAIT_INTERVAL_SECONDS:-5}"
 
-for value_name in WEBHOOK_WAIT_TIMEOUT_SECONDS WEBHOOK_WAIT_INTERVAL_SECONDS; do
+for value_name in USERS JOBS_PER_USER WEBHOOK_WAIT_TIMEOUT_SECONDS WEBHOOK_WAIT_INTERVAL_SECONDS; do
   value="${!value_name}"
   if [[ ! "${value}" =~ ^[1-9][0-9]*$ ]]; then
     echo "ERROR: ${value_name} must be a positive integer; got '${value}'." >&2
     exit 1
   fi
 done
+TOTAL_APPLICATIONS=$((USERS * JOBS_PER_USER))
+
+if [[ ! -d "${HARNESS}/.venv" ]]; then
+  echo "==> Creating venv and installing harness"
+  python3 -m venv "${HARNESS}/.venv"
+  "${HARNESS}/.venv/bin/pip" install -U pip
+  "${HARNESS}/.venv/bin/pip" install -r "${HARNESS}/requirements.txt"
+fi
+PYTHON_CMD="${HARNESS}/.venv/bin/python"
+# shellcheck disable=SC1091
+source "${HARNESS}/.venv/bin/activate"
 
 echo "==> Recording versions -> ${RESULTS_DIR}/versions.json"
-if ! python3 "${HARNESS}/record_versions.py" "${RESULTS_DIR}/versions.json"; then
+if ! "${PYTHON_CMD}" "${HARNESS}/record_versions.py" "${RESULTS_DIR}/versions.json"; then
   echo "WARNING: failed to record component versions; continuing with an incomplete artifact set." >&2
 fi
 
 echo "==> Webhook inventory -> ${RESULTS_DIR}/webhook-inventory.json"
-if ! python3 "${HARNESS}/webhook_inventory.py" "${RESULTS_DIR}/webhook-inventory.json"; then
+if ! "${PYTHON_CMD}" "${HARNESS}/webhook_inventory.py" "${RESULTS_DIR}/webhook-inventory.json"; then
   echo "WARNING: failed to record the webhook inventory; continuing with an incomplete artifact set." >&2
 fi
 
 echo "==> Capacity snapshot -> ${RESULTS_DIR}/capacity.json"
-if ! python3 "${HARNESS}/capacity_snapshot.py" "${RESULTS_DIR}/capacity.json" "${NAMESPACES}"; then
+capacity_args=(
+  "${RESULTS_DIR}/capacity.json"
+  "${NAMESPACES}"
+  --template "${TEMPLATE}"
+  --applications "${TOTAL_APPLICATIONS}"
+)
+if [[ "${ACK_LOW_CAPACITY:-}" == "1" ]]; then
+  capacity_args+=(--ack-low-capacity)
+fi
+if ! "${PYTHON_CMD}" "${HARNESS}/capacity_snapshot.py" "${capacity_args[@]}"; then
   echo "ERROR: failed to capture cluster capacity; refusing to start an unqualified benchmark run." >&2
   exit 1
 fi
@@ -106,18 +126,6 @@ if [[ "${PATCH_OK}" != "true" ]]; then
     echo "       Re-run with ALLOW_WEBHOOK_REVERT=1 to continue and record the blocker." >&2
     exit 1
   fi
-fi
-
-if [[ ! -d "${HARNESS}/.venv" ]]; then
-  echo "==> Creating venv and installing harness"
-  python3 -m venv "${HARNESS}/.venv"
-  # shellcheck disable=SC1091
-  source "${HARNESS}/.venv/bin/activate"
-  pip install -U pip
-  pip install -r "${HARNESS}/requirements.txt"
-else
-  # shellcheck disable=SC1091
-  source "${HARNESS}/.venv/bin/activate"
 fi
 
 # controller resources durable through SparkOperator.spec.spark.controllerResources.
@@ -375,9 +383,10 @@ if ! diff -u \
   configuration_stable=false
 fi
 
-# Refresh capacity.json after the run so SCC/NP event scans cover the load window.
-echo "==> Refreshing capacity snapshot (post-run admission events) -> ${RESULTS_DIR}/capacity.json"
-if ! python3 "${HARNESS}/capacity_snapshot.py" "${RESULTS_DIR}/capacity.json" "${NAMESPACES}"; then
+# Preserve the qualified pre-run snapshot and record post-run admission events separately.
+echo "==> Post-run capacity snapshot -> ${RESULTS_DIR}/capacity-after.json"
+if ! "${PYTHON_CMD}" "${HARNESS}/capacity_snapshot.py" \
+  "${RESULTS_DIR}/capacity-after.json" "${NAMESPACES}"; then
   echo "WARNING: failed to refresh the post-run capacity snapshot; preserving the completed run." >&2
 fi
 
