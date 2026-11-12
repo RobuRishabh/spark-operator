@@ -23,6 +23,7 @@ NO_CLEANUP="${NO_CLEANUP:-}"
 export SPARK_BENCH_INSECURE_SKIP_TLS_VERIFY="${SPARK_BENCH_INSECURE_SKIP_TLS_VERIFY:-false}"
 WEBHOOK_WAIT_TIMEOUT_SECONDS="${WEBHOOK_WAIT_TIMEOUT_SECONDS:-600}"
 WEBHOOK_WAIT_INTERVAL_SECONDS="${WEBHOOK_WAIT_INTERVAL_SECONDS:-5}"
+CONTROLLER_START_LATENCY_BUCKETS="${CONTROLLER_START_LATENCY_BUCKETS:-30,60,90,120,150,180,210,240,270,300,400,500,600}"
 
 for value_name in USERS JOBS_PER_USER WEBHOOK_WAIT_TIMEOUT_SECONDS WEBHOOK_WAIT_INTERVAL_SECONDS; do
   value="${!value_name}"
@@ -177,6 +178,7 @@ expected_controller_args=()
 [[ -n "${CONTROLLER_WORKQUEUE_MAX_DELAY:-}" ]] && expected_controller_args+=("--workqueue-ratelimiter-max-delay=${CONTROLLER_WORKQUEUE_MAX_DELAY}")
 [[ -n "${CONTROLLER_KUBE_API_QPS:-}" ]] && expected_controller_args+=("--kube-api-qps=${CONTROLLER_KUBE_API_QPS}")
 [[ -n "${CONTROLLER_KUBE_API_BURST:-}" ]] && expected_controller_args+=("--kube-api-burst=${CONTROLLER_KUBE_API_BURST}")
+expected_controller_args+=("--metrics-job-start-latency-buckets=${CONTROLLER_START_LATENCY_BUCKETS}")
 
 if [[ "${#expected_controller_args[@]}" -gt 0 ]]; then
   echo "==> Patching SparkOperator controllerConfiguration"
@@ -188,7 +190,8 @@ if [[ "${#expected_controller_args[@]}" -gt 0 ]]; then
       --arg workqueue_burst "${CONTROLLER_WORKQUEUE_BURST:-}" \
       --arg workqueue_max_delay "${CONTROLLER_WORKQUEUE_MAX_DELAY:-}" \
       --arg kube_api_qps "${CONTROLLER_KUBE_API_QPS:-}" \
-      --arg kube_api_burst "${CONTROLLER_KUBE_API_BURST:-}" '
+      --arg kube_api_burst "${CONTROLLER_KUBE_API_BURST:-}" \
+      --arg start_latency_buckets "${CONTROLLER_START_LATENCY_BUCKETS}" '
           def number_field($name; $value):
             if $value == "" then {} else {($name): ($value | tonumber)} end;
 
@@ -196,6 +199,8 @@ if [[ "${#expected_controller_args[@]}" -gt 0 ]]; then
             (number_field("workers"; $threads)
             + number_field("kubeAPIQPS"; $kube_api_qps)
             + number_field("kubeAPIBurst"; $kube_api_burst)
+            + {metricsJobStartLatencyBuckets:
+                ($start_latency_buckets | split(",") | map(tonumber))}
             + (if ($workqueue_qps != "" or $workqueue_burst != "" or $workqueue_max_delay != "")
                then {workqueueRateLimiter:
                  (number_field("bucketQPS"; $workqueue_qps)
@@ -353,7 +358,7 @@ record_controller_state() {
               resources,
               args: [
                 .args[]
-                | select(test("^--(controller-threads|workqueue-ratelimiter|kube-api-)"))
+                | select(test("^--(controller-threads|workqueue-ratelimiter|kube-api-|metrics-job-start-latency-buckets)"))
               ]
             }
         '
