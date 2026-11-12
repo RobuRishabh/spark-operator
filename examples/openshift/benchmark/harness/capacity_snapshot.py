@@ -102,7 +102,7 @@ def _pod_cpu_request_m(pod: dict[str, Any]) -> int:
     return max(regular, init) + _cpu_m((spec.get("overhead") or {}).get("cpu", "0"))
 
 
-def _workload_requirements(template_path: Path, applications: int) -> dict[str, int]:
+def _workload_requirements(template_path: Path, applications: int) -> dict[str, Any]:
     template = yaml.safe_load(template_path.read_text(encoding="utf-8"))
     if not isinstance(template, dict):
         raise ValueError("workload template must be a YAML mapping")
@@ -116,6 +116,8 @@ def _workload_requirements(template_path: Path, applications: int) -> dict[str, 
     pods_per_application = 1 + executor_count
     return {
         "applications": applications,
+        "image": spec.get("image"),
+        "image_pull_policy": spec.get("imagePullPolicy", "IfNotPresent"),
         "cpu_per_application_m": cpu_per_application_m,
         "pods_per_application": pods_per_application,
         "required_cpu_m": applications * cpu_per_application_m,

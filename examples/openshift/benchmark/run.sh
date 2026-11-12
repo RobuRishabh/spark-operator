@@ -241,6 +241,72 @@ if [[ "${#expected_controller_args[@]}" -gt 0 ]]; then
     -n redhat-ods-applications --timeout=10m
 fi
 
+warm_workload_image() {
+  local image pull_policy namespace daemonset manifest
+  image="$(jq -er '.workload.image | select(type == "string" and length > 0)' \
+    "${RESULTS_DIR}/capacity.json")"
+  pull_policy="$(jq -er '.workload.image_pull_policy' "${RESULTS_DIR}/capacity.json")"
+  namespace="${NAMESPACES%%,*}"
+  namespace="${namespace#"${namespace%%[![:space:]]*}"}"
+  namespace="${namespace%"${namespace##*[![:space:]]}"}"
+  daemonset="spark-benchmark-image-warmup"
+
+  echo "==> Pre-pulling ${image} on every eligible worker node"
+  oc delete daemonset "${daemonset}" -n "${namespace}" \
+    --ignore-not-found --wait=true > /dev/null
+  manifest="$(jq -nc \
+    --arg name "${daemonset}" \
+    --arg namespace "${namespace}" \
+    --arg image "${image}" \
+    --arg pull_policy "${pull_policy}" \
+    --arg service_account "${SERVICE_ACCOUNT}" '
+      {
+        apiVersion: "apps/v1",
+        kind: "DaemonSet",
+        metadata: {name: $name, namespace: $namespace},
+        spec: {
+          selector: {matchLabels: {"spark-bench.component": "image-warmup"}},
+          template: {
+            metadata: {labels: {"spark-bench.component": "image-warmup"}},
+            spec: {
+              serviceAccountName: $service_account,
+              containers: [{
+                name: "image-cache",
+                image: $image,
+                imagePullPolicy: $pull_policy,
+                command: ["/bin/sh", "-c", "sleep 3600"],
+                resources: {requests: {cpu: "1m", memory: "1Mi"}},
+                securityContext: {
+                  allowPrivilegeEscalation: false,
+                  capabilities: {drop: ["ALL"]},
+                  runAsUser: 185,
+                  runAsGroup: 185,
+                  runAsNonRoot: true
+                }
+              }]
+            }
+          }
+        }
+      }
+    ')"
+  printf '%s\n' "${manifest}" | oc apply -f - > /dev/null
+
+  if ! oc rollout status "daemonset/${daemonset}" -n "${namespace}" --timeout=15m ||
+    ! oc get daemonset "${daemonset}" -n "${namespace}" -o json | jq -e '
+      .status.desiredNumberScheduled > 0
+      and .status.numberReady == .status.desiredNumberScheduled
+    ' > /dev/null; then
+    oc delete daemonset "${daemonset}" -n "${namespace}" --wait=false > /dev/null 2>&1 || true
+    echo "ERROR: failed to pre-pull ${image} on every eligible worker node." >&2
+    exit 1
+  fi
+
+  oc delete daemonset "${daemonset}" -n "${namespace}" --wait=true > /dev/null
+  echo "Image warm-up complete; all eligible worker nodes have ${image} cached."
+}
+
+warm_workload_image
+
 # Start every measured cell with a fresh controller process so cumulative
 # operator counters do not leak across experiments.
 if [[ "${RESET_CONTROLLER_BEFORE_RUN:-true}" == "true" ]]; then

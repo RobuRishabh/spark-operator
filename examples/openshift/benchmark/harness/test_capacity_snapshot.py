@@ -15,6 +15,8 @@ class CapacitySnapshotTest(TestCase):
 
         required = _workload_requirements(template, 51)
 
+        self.assertEqual(required["image"], "docker.io/apache/spark:4.0.1")
+        self.assertEqual(required["image_pull_policy"], "IfNotPresent")
         self.assertEqual(required["cpu_per_application_m"], 600)
         self.assertEqual(required["pods_per_application"], 6)
         self.assertEqual(required["required_cpu_m"], 30_600)
