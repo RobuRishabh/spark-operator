@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import subprocess
+import sys
 import urllib.parse
 import urllib.request
 import ssl
@@ -64,7 +65,7 @@ def _tls_context() -> ssl.SSLContext:
     return ssl.create_default_context(cadata=ca_bundle)
 
 
-def main() -> None:
+def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--queries", required=True)
     parser.add_argument("--output", required=True)
@@ -116,7 +117,15 @@ def main() -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     print(f"Wrote {out}")
+    failed = [entry["id"] for entry in results if entry.get("status") != "success"]
+    if failed:
+        print(
+            "ERROR: Prometheus queries failed: " + ", ".join(failed),
+            file=sys.stderr,
+        )
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

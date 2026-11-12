@@ -449,6 +449,14 @@ if ! diff -u \
   configuration_stable=false
 fi
 
+metrics_snapshot_ok=true
+if [[ "${SKIP_METRICS_SNAPSHOT:-}" == "1" ]]; then
+  echo "WARNING: skipping the Prometheus snapshot because SKIP_METRICS_SNAPSHOT=1." >&2
+elif ! "${ROOT}/metrics/snapshot.sh" "${RESULTS_DIR}"; then
+  metrics_snapshot_ok=false
+  echo "ERROR: failed to preserve the post-run Prometheus metrics." >&2
+fi
+
 # Preserve the qualified pre-run snapshot and record post-run admission events separately.
 echo "==> Post-run capacity snapshot -> ${RESULTS_DIR}/capacity-after.json"
 if ! "${PYTHON_CMD}" "${HARNESS}/capacity_snapshot.py" \
@@ -461,6 +469,9 @@ ls -la "${RESULTS_DIR}"
 
 if [[ "${configuration_stable}" != "true" ]]; then
   echo "ERROR: controller configuration or pod identity changed during the benchmark; discard this run." >&2
+  exit 1
+fi
+if [[ "${metrics_snapshot_ok}" != "true" ]]; then
   exit 1
 fi
 
